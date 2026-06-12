@@ -1,0 +1,84 @@
+/* Basic layout and responsive styles for the tracking prototype */
+html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial}
+body{display:flex;align-items:center;justify-content:center;background:#111;color:#eee}
+#app{width:100%;max-width:980px;padding:16px}
+h1{margin:0 0 12px;font-size:1.4rem;text-align:center}
+.controls{display:flex;gap:8px;align-items:center;justify-content:center;margin-bottom:12px}
+button{padding:8px 12px;border-radius:6px;border:0;background:#2b6cb0;color:#fff;font-weight:600;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+#status{margin-left:8px;font-weight:500}
+.video-container{position:relative;overflow:hidden;border-radius:8px;background:#000;display:flex;align-items:center;justify-content:center}
+/* Video fills container while preserving aspect ratio */
+#video{width:100%;height:auto;max-height:70vh;display:block}
+/* Canvas positioned exactly on top of the video */
+#overlay{position:absolute;left:0;top:0;pointer-events:none}
+.hint{text-align:center;margin-top:8px;font-size:0.9rem;color:#cfcfcf}
+
+/* Mobile friendly tweaks */
+@media (max-width:600px){
+  h1{font-size:1.1rem}
+  button{padding:10px 14px}
+}
+
+/* Settings sliders */
+.settings{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center;margin-top:10px}
+.settings label{color:#ddd;font-size:0.9rem;display:flex;align-items:center;gap:6px}
+.settings input[type="range"]{width:120px}
+.settings span{min-width:40px;text-align:center;color:#fff;font-weight:600}
+
+/* Language visibility: show only selected language spans */
+body.lang-en .lang-de { display: none; }
+body.lang-de .lang-en { display: none; }
+
+/* Tooltip styling for desktop and mobile (shown on hover or tap) */
+.tooltip{
+  position:fixed;
+  z-index:9999;
+  background:rgba(20,20,20,0.95);
+  color:#fff;
+  padding:8px 10px;
+  border-radius:8px;
+  box-shadow:0 6px 18px rgba(0,0,0,0.4);
+  max-width:260px;
+  font-size:13px;
+  line-height:1.2;
+  pointer-events:auto;
+  opacity:0;
+  transition:opacity 140ms ease, transform 160ms ease;
+  transform:translateY(6px);
+}
+.tooltip.visible{ opacity:1; transform:translateY(0); }
+
+/* make room for small select on mobile */
+@media (max-width:600px){
+  .controls select#langSelect{padding:6px 8px}
+}
+
+/* Legend info buttons layered above the video (bottom-left) */
+.video-container{position:relative}
+.legend-controls{position:absolute;left:0;top:0;right:0;bottom:0;z-index:1000;pointer-events:none}
+.legend-btn{position:absolute;pointer-events:auto;background:rgba(0,0,0,0.6);color:#fff;border:0;width:28px;height:28px;border-radius:6px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.legend-btn:active{transform:translateY(1px)}
+.legend-btn:focus{outline:2px solid rgba(102,204,255,0.6)}
+
+/* Event log styling */
+.event-log{position:fixed;right:12px;bottom:12px;width:260px;max-height:40vh;background:rgba(0,0,0,0.6);color:#fff;border-radius:8px;overflow:hidden;z-index:2000;font-size:13px}
+.event-log-header{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.06)}
+.event-log-header button{background:rgba(255,255,255,0.06);border:0;color:#fff;padding:4px 6px;border-radius:6px;cursor:pointer}
+.event-log ul{list-style:none;margin:0;padding:8px;max-height:34vh;overflow:auto}
+.event-log li{padding:6px 4px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:12px}
+.event-log li .time{color:#bbb;margin-right:6px;font-size:11px}
+.event-log .badge{background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:6px;margin-left:6px;font-size:11px}
+
+/* Novice mode & group card styles */
+.top-caption{position:absolute;left:50%;transform:translateX(-50%);top:8px;background:rgba(0,0,0,0.6);color:#fff;padding:8px 14px;border-radius:8px;font-weight:700;z-index:1500}
+.confidence-dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:middle;box-shadow:0 2px 6px rgba(0,0,0,0.5)}
+.group-card{position:absolute;z-index:1500;background:rgba(0,0,0,0.7);color:#fff;padding:8px 10px;border-radius:8px;font-size:13px;pointer-events:none}
+.heatmap-canvas{position:absolute;left:0;top:0;pointer-events:none}
+
+/* Debug / annotation styles for explainable overlays */
+.annotation-label{font-size:11px;color:#fff;background:rgba(0,0,0,0.6);padding:2px 6px;border-radius:4px}
+.predicted-box{stroke-dasharray:6 3}
+.debug-highlight-unmatched-detect{stroke:rgba(255,200,60,0.95);}
+.debug-highlight-unmatched-track{stroke:rgba(255,120,40,0.95);}
+.debug-score{font-size:10px;font-weight:700;fill:#fff;stroke:rgba(0,0,0,0.6);stroke-width:2px}

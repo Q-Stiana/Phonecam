@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Person Tracking Prototype</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Load TensorFlow.js and COCO-SSD from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
+</head>
+<body>
+  <main id="app">
+    <h1>Person Tracking Prototype</h1>
+
+    <!-- Controls -->
+    <div class="controls">
+      <button id="startButton" data-tooltip-de="Startet die Kamera und beginnt die Erkennung (lokal im Browser)" data-tooltip-en="Starts the camera and begins detection (local only)">
+        <span class="lang lang-de">Start Kamera</span>
+        <span class="lang lang-en">Start Camera</span>
+      </button>
+      <button id="stopButton" disabled data-tooltip-de="Stoppt die Erkennung und schließt die Kamera" data-tooltip-en="Stops detection and closes the camera">
+        <span class="lang lang-de">Stop</span>
+        <span class="lang lang-en">Stop</span>
+      </button>
+      <!-- Kameraauswahl: 'user' (Front) oder 'environment' (Rück) -->
+      <label for="facingSelect" data-tooltip-de="Wähle Front- oder Rückkamera" data-tooltip-en="Choose front or rear camera">
+        <span class="lang lang-de">Kamera:</span>
+        <span class="lang lang-en">Camera:</span>
+      </label>
+      <!-- Voreinstellung: Laptop-Frontkamera (deaktiviert für erste Tests) -->
+      <select id="facingSelect" aria-label="Kamera auswählen" disabled>
+        <option value="user">Frontkamera (Laptop)</option>
+        <option value="environment">Rückkamera</option>
+      </select>
+      <label for="debugToggle" data-tooltip-de="Zeigt Matching- und Vorhersage-Überlagerungen" data-tooltip-en="Show matching and prediction overlays">
+        <span class="lang lang-de">Debug-Visuals</span>
+        <span class="lang lang-en">Debug Visuals</span>
+        <input type="checkbox" id="debugToggle" style="margin-left:6px" />
+      </label>
+      <label for="noviceToggle" data-tooltip-de="Einfache Ansicht für Laien" data-tooltip-en="Simplified view for laypeople">
+        <span class="lang lang-de">Novice Mode</span>
+        <span class="lang lang-en">Novice Mode</span>
+        <input type="checkbox" id="noviceToggle" style="margin-left:6px" />
+      </label>
+      <label for="narrationToggle" data-tooltip-de="Sprache für Events aktivieren" data-tooltip-en="Enable spoken event narration">
+        <span class="lang lang-de">Narration</span>
+        <span class="lang lang-en">Narration</span>
+        <input type="checkbox" id="narrationToggle" style="margin-left:6px" />
+      </label>
+      <label for="heatmapToggle" data-tooltip-de="Zeige Wärmebild der Anwesenheit" data-tooltip-en="Show occupancy heatmap">
+        <span class="lang lang-de">Heatmap</span>
+        <span class="lang lang-en">Heatmap</span>
+        <input type="checkbox" id="heatmapToggle" style="margin-left:6px" />
+      </label>
+      <label id="status" data-tooltip-de="Aktueller Status der Erkennung" data-tooltip-en="Current detection status">Status: <span class="lang lang-de">Bereit</span><span class="lang lang-en">Ready</span></label>
+      <label for="langSelect" style="margin-left:8px">
+        <span class="lang lang-de">Sprache:</span>
+        <span class="lang lang-en">Language:</span>
+      </label>
+      <select id="langSelect" aria-label="Sprache / Language">
+        <option value="de">Deutsch</option>
+        <option value="en">English</option>
+      </select>
+    </div>
+
+    <!-- Tracking-Parameter (live einstellbar) -->
+    <div class="settings">
+      <!-- Increased defaults for more stable tracking -->
+      <label>max_age (Frames): <input id="maxAge" type="range" min="10" max="600" value="150"/></label>
+      <span id="maxAgeVal">150</span>
+      <label>iou_threshold: <input id="iouThresh" type="range" min="0" max="100" value="20"/></label>
+      <span id="iouVal">0.20</span>
+      <label>min_hits: <input id="minHits" type="range" min="1" max="10" value="3"/></label>
+      <span id="minHitsVal">3</span>
+      <label>frame_skip: <input id="frameSkip" type="range" min="1" max="10" value="2"/></label>
+      <span id="frameSkipVal">2</span>
+      <label>proximity (px): <input id="proximityThresh" type="range" min="30" max="400" value="100"/></label>
+      <span id="proximityVal">100</span>
+      <label>proximity debounce (frames): <input id="proximityDebounce" type="range" min="1" max="10" value="3"/></label>
+      <span id="proximityDebounceVal">3</span>
+    </div>
+
+    <!-- Container hält Video und Canvas overlay -->
+    <div class="video-container">
+      <!-- Video-Element zeigt Stream der Webcam -->
+      <video id="video" autoplay playsinline muted></video>
+      <!-- Canvas-Overlay für Bounding-Boxes und IDs -->
+      <canvas id="overlay"></canvas>
+      <!-- Legend info buttons (English-only tooltips) -->
+      <div class="legend-controls">
+        <button id="legend-btn-appearance" class="legend-btn" data-tooltip-en="Appearance (hue): dominant clothing color used for visual matching.">ℹ</button>
+        <button id="legend-btn-speed" class="legend-btn" data-tooltip-en="Speed (green→red): relative motion speed (slow → fast).">ℹ</button>
+      </div>
+    </div>
+
+    <p class="hint">Hinweis: Alle Erkennungen laufen lokal im Browser. Keine Daten werden gesendet.</p>
+    <!-- Event log panel for behavior events -->
+    <aside id="eventLog" class="event-log" aria-live="polite">
+      <div class="event-log-header">
+        <strong>Event Log</strong>
+        <button id="clearLog">Clear</button>
+      </div>
+      <ul id="eventList"></ul>
+    </aside>
+    <!-- Explanations for viewers: what each overlay means -->
+    <section class="explanations">
+      <h2>Erklärung der Visualisierungen</h2>
+      <ul>
+        <li><strong>Bounding Box:</strong> Markiert erkannte Personen im Videobild.</li>
+        <li><strong>ID:</strong> Temporäre Kennung (z. B. ID1). Bleibt stabil, solange die Person sichtbar ist.</li>
+        <li><strong>Aufenthaltsdauer (Dwell time):</strong> Sekunden seit Erkennung; Fortschrittsbalken zeigt Dauer (0–60s).</li>
+        <li><strong>Farb‑Histogramm & Farbfeld:</strong> Zeigt dominierende Farbtöne des Personen‑Crops; hilft bei der Zuordnung ähnlicher Personen.</li>
+        <li><strong>Motion‑Area:</strong> Kleine Sparkline + Pfeil zeigt zuletzt gemessene Bewegungsrichtung und Verlauf.</li>
+        <li><strong>Geschwindigkeitsfarbe:</strong> Motion‑Linien sind farblich kodiert (grün = langsam → rot = schnell); Legende unten links.</li>
+        <li><strong>Tracking‑Methode:</strong> Kalman‑Filter + Hungarian Matching (lokal im Browser) kombiniert Position, Bewegung und Farbe für stabile IDs.</li>
+        <li><strong>Privatsphäre:</strong> Alle Berechnungen laufen lokal; keine Aufnahmen oder Daten werden gesendet.</li>
+      </ul>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
