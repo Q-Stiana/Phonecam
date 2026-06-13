@@ -25,6 +25,7 @@ const COCO_SSD_MODEL_URL = 'models/coco-ssd/model.json';
 let stream = null; // MediaStream from getUserMedia
 let running = false; // loop state
 let facingMode = 'user'; // 'user' (front) or 'environment' (rear)
+let selectedCameraId = ''; // exact camera deviceId when a physical camera is selected
 let frameSkip = 2; // process detection every N frames (reduce CPU)
 let frameCounter = 0;
 
@@ -199,6 +200,47 @@ function updateTrackEventLog(activeTracks){
       delete trackEvents.states[id];
       delete trackEvents.missingFrames[id];
     }
+  }
+}
+
+function getVideoConstraints(){
+  if(selectedCameraId){
+    return { deviceId: { exact: selectedCameraId } };
+  }
+  return { facingMode: facingMode };
+}
+
+async function refreshCameraOptions(){
+  if(!facingSelect || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+  try{
+    const currentValue = selectedCameraId ? `device:${selectedCameraId}` : facingMode;
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cameras = devices.filter(device => device.kind === 'videoinput');
+    const options = [
+      { value: 'user', label: 'Frontkamera (Laptop)' },
+      { value: 'environment', label: 'Rückkamera' }
+    ];
+    cameras.forEach((camera, index) => {
+      const label = camera.label || `Kamera ${index + 1}`;
+      options.push({ value: `device:${camera.deviceId}`, label });
+    });
+
+    facingSelect.innerHTML = '';
+    options.forEach(optionInfo => {
+      const option = document.createElement('option');
+      option.value = optionInfo.value;
+      option.textContent = optionInfo.label;
+      facingSelect.appendChild(option);
+    });
+
+    if(options.some(option => option.value === currentValue)){
+      facingSelect.value = currentValue;
+    }else{
+      selectedCameraId = '';
+      facingSelect.value = facingMode;
+    }
+  }catch(err){
+    console.warn('Kameraliste konnte nicht gelesen werden', err);
   }
 }
 
@@ -1553,11 +1595,11 @@ async function start(){
 
   statusLabel.textContent = 'Status: Zugriff auf Kamera anfordern...';
 
-  // Request webcam using the currently selected facing mode.
-  // `facingMode` is 'user' or 'environment'.
+  // Request webcam using either the selected physical camera or facing mode.
   try{
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facingMode }, audio: false });
+    stream = await navigator.mediaDevices.getUserMedia({ video: getVideoConstraints(), audio: false });
     video.srcObject = stream;
+    await refreshCameraOptions();
   }catch(err){
     console.error('Kamera Fehler', err);
     statusLabel.textContent = 'Kamera-Zugriff verweigert oder nicht verfügbar';
@@ -1606,15 +1648,20 @@ function stop(){
 startButton.addEventListener('click', () => { start(); });
 stopButton.addEventListener('click', () => { stop(); });
 
-// Wire up facing mode select: when changed, update `facingMode` and restart stream if running.
+// Wire up camera select: facing presets plus concrete devices after permission.
 if(facingSelect){
   // Initialize select to default
   facingSelect.value = facingMode;
+  refreshCameraOptions();
   facingSelect.addEventListener('change', async (ev) =>{
-    const newMode = facingSelect.value;
-    // Update desired facing mode
-    facingMode = newMode;
-    // If detection is running, restart camera with new facing mode
+    const selectedValue = facingSelect.value;
+    if(selectedValue.startsWith('device:')){
+      selectedCameraId = selectedValue.slice('device:'.length);
+    }else{
+      selectedCameraId = '';
+      facingMode = selectedValue;
+    }
+    // If detection is running, restart camera with the new camera selection.
     if(running){
       statusLabel.textContent = 'Status: Kamera wechselt...';
       stop();
