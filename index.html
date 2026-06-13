@@ -28,10 +28,12 @@
         <span class="lang lang-de">Kamera:</span>
         <span class="lang lang-en">Camera:</span>
       </label>
-      <!-- Voreinstellung: Laptop-Frontkamera (deaktiviert für erste Tests) -->
-      <select id="facingSelect" aria-label="Kamera auswählen" disabled>
+      <!-- Voreinstellung: Laptop-Frontkamera; angeschlossene Kameras erscheinen nach Kamera-Erlaubnis. -->
+      <select id="facingSelect" aria-label="Kamera auswählen">
+        <option value="auto">Automatische Kamera</option>
         <option value="user">Frontkamera (Laptop)</option>
         <option value="environment">Rückkamera</option>
+        <option value="device-placeholder" disabled>Externe/Lenovo Kamera erscheint nach Start</option>
       </select>
       <label for="debugToggle" data-tooltip-de="Zeigt Matching- und Vorhersage-Überlagerungen" data-tooltip-en="Show matching and prediction overlays">
         <span class="lang lang-de">Debug-Visuals</span>

@@ -79,6 +79,13 @@ const trackEvents = {
   missingFramesLimit: 45
 };
 
+function formatDuration(ms){
+  const total = Math.max(0, Math.round(ms / 1000));
+  const min = Math.floor(total / 60);
+  const sec = total % 60;
+  return min > 0 ? `${min}m ${String(sec).padStart(2,'0')}s` : `${sec}s`;
+}
+
 function trackSpeedNorm(track){
   const mh = track.motionHistory || [];
   if(mh.length < 2) return 0;
@@ -105,6 +112,9 @@ function updateTrackEventLog(activeTracks){
         moveFrames: 0,
         stopFrames: 0,
         stillFrames: 0,
+        seenAt: Date.now(),
+        stillSince: null,
+        lastStillMilestone: 0,
         loiterLogged: false,
         lastColor: null
       };
@@ -119,9 +129,14 @@ function updateTrackEventLog(activeTracks){
       state.moveFrames++;
       state.stopFrames = 0;
       state.stillFrames = 0;
-      state.loiterLogged = false;
       if(!state.moving && state.moveFrames >= trackEvents.movementFrames){
+        if(state.stillSince){
+          pushEvent(`${t.id} bewegt sich weiter nach ${formatDuration(Date.now() - state.stillSince)} Stillstand`);
+          state.stillSince = null;
+          state.lastStillMilestone = 0;
+        }
         state.moving = true;
+        state.loiterLogged = false;
         pushEvent(`${t.id} startet Bewegung`);
       }
     }else if(speed <= trackEvents.stopThreshold){
@@ -130,11 +145,28 @@ function updateTrackEventLog(activeTracks){
       state.stillFrames++;
       if(state.moving && state.stopFrames >= trackEvents.stopFrames){
         state.moving = false;
+        state.stillSince = Date.now();
+        state.lastStillMilestone = 0;
         pushEvent(`${t.id} bleibt stehen`);
+      }else if(!state.moving && !state.stillSince && state.stopFrames >= trackEvents.stopFrames){
+        state.stillSince = Date.now();
+        state.lastStillMilestone = 0;
+      }
+      if(state.stillSince){
+        const stillSeconds = Math.floor((Date.now() - state.stillSince) / 1000);
+        const milestones = [10, 30, 60, 120];
+        for(const milestone of milestones){
+          if(stillSeconds >= milestone && state.lastStillMilestone < milestone){
+            state.lastStillMilestone = milestone;
+            pushEvent(`${t.id} steht still seit ${formatDuration(stillSeconds * 1000)}`);
+            break;
+          }
+        }
       }
       if(!state.loiterLogged && state.stillFrames >= trackEvents.loiterFrames){
         state.loiterLogged = true;
-        pushEvent(`${t.id} verweilt / loitering`);
+        const dwell = state.stillSince ? ` (${formatDuration(Date.now() - state.stillSince)} Stillstand)` : '';
+        pushEvent(`${t.id} verweilt / loitering${dwell}`);
       }
     }else{
       state.moveFrames = 0;
@@ -152,7 +184,10 @@ function updateTrackEventLog(activeTracks){
     if(activeIds.has(id)) continue;
     trackEvents.missingFrames[id] = (trackEvents.missingFrames[id] || 0) + 1;
     if(trackEvents.missingFrames[id] === trackEvents.missingFramesLimit){
-      pushEvent(`${id} verschwindet aus dem Sichtfeld`);
+      const observed = trackEvents.states[id] && trackEvents.states[id].seenAt
+        ? ` nach ${formatDuration(Date.now() - trackEvents.states[id].seenAt)} Beobachtung`
+        : '';
+      pushEvent(`${id} verschwindet aus dem Sichtfeld${observed}`);
       delete trackEvents.states[id];
       delete trackEvents.missingFrames[id];
     }

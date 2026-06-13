@@ -12,7 +12,8 @@ let model = null; // loaded COCO-SSD model
 const COCO_SSD_MODEL_URL = 'models/coco-ssd/model.json';
 let stream = null; // MediaStream from getUserMedia
 let running = false; // loop state
-let facingMode = 'user'; // 'user' (front) or 'environment' (rear)
+let facingMode = 'auto'; // 'auto', 'user' (front), or 'environment' (rear)
+let selectedCameraId = ''; // exact camera deviceId when a physical camera is selected
 let frameSkip = 2; // process detection every N frames (reduce CPU)
 let frameCounter = 0;
 
