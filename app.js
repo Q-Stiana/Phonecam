@@ -24,7 +24,7 @@ let model = null; // loaded COCO-SSD model
 const COCO_SSD_MODEL_URL = 'models/coco-ssd/model.json';
 let stream = null; // MediaStream from getUserMedia
 let running = false; // loop state
-let facingMode = 'user'; // 'user' (front) or 'environment' (rear)
+let facingMode = 'auto'; // 'auto', 'user' (front), or 'environment' (rear)
 let selectedCameraId = ''; // exact camera deviceId when a physical camera is selected
 let frameSkip = 2; // process detection every N frames (reduce CPU)
 let frameCounter = 0;
@@ -207,7 +207,24 @@ function getVideoConstraints(){
   if(selectedCameraId){
     return { deviceId: { exact: selectedCameraId } };
   }
+  if(facingMode === 'auto'){
+    return true;
+  }
   return { facingMode: facingMode };
+}
+
+async function requestCameraStream(){
+  try{
+    return await navigator.mediaDevices.getUserMedia({ video: getVideoConstraints(), audio: false });
+  }catch(err){
+    const hadSpecificSelection = !!selectedCameraId || facingMode !== 'auto';
+    if(!hadSpecificSelection) throw err;
+    console.warn('Gewählte Kamera nicht verfügbar, versuche automatische Kamera', err);
+    selectedCameraId = '';
+    facingMode = 'auto';
+    if(facingSelect) facingSelect.value = 'auto';
+    return navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+  }
 }
 
 async function refreshCameraOptions(){
@@ -217,6 +234,7 @@ async function refreshCameraOptions(){
     const devices = await navigator.mediaDevices.enumerateDevices();
     const cameras = devices.filter(device => device.kind === 'videoinput');
     const options = [
+      { value: 'auto', label: 'Automatische Kamera' },
       { value: 'user', label: 'Frontkamera (Laptop)' },
       { value: 'environment', label: 'Rückkamera' }
     ];
@@ -1597,12 +1615,14 @@ async function start(){
 
   // Request webcam using either the selected physical camera or facing mode.
   try{
-    stream = await navigator.mediaDevices.getUserMedia({ video: getVideoConstraints(), audio: false });
+    stream = await requestCameraStream();
     video.srcObject = stream;
     await refreshCameraOptions();
   }catch(err){
     console.error('Kamera Fehler', err);
-    statusLabel.textContent = 'Kamera-Zugriff verweigert oder nicht verfügbar';
+    statusLabel.textContent = err && err.name === 'NotAllowedError'
+      ? 'Kamera-Zugriff im Browser blockiert'
+      : 'Kamera nicht verfügbar';
     startButton.disabled = false;
     return;
   }
