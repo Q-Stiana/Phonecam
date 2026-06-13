@@ -21,6 +21,7 @@ const statusLabel = document.getElementById('status');
 const facingSelect = document.getElementById('facingSelect');
 
 let model = null; // loaded COCO-SSD model
+const COCO_SSD_MODEL_URL = 'models/coco-ssd/model.json';
 let stream = null; // MediaStream from getUserMedia
 let running = false; // loop state
 let facingMode = 'user'; // 'user' (front) or 'environment' (rear)
@@ -45,8 +46,35 @@ proximity.stableMembership = {}; // confirmed membership after debounce
 // Event log
 const eventLog = { entries: [], max: 80 };
 const eventListEl = document.getElementById('eventList');
+const eventLogEl = document.getElementById('eventLog');
 const clearLogBtn = document.getElementById('clearLog');
 if(clearLogBtn){ clearLogBtn.addEventListener('click', ()=>{ eventLog.entries = []; renderEventLog(); }); }
+let eventLogHover = false;
+
+function setEventLogFullscreen(enabled){
+  if(!eventLogEl) return;
+  eventLogEl.classList.toggle('is-fullscreen', enabled);
+}
+
+if(eventLogEl){
+  eventLogEl.addEventListener('mouseenter', ()=>{ eventLogHover = true; });
+  eventLogEl.addEventListener('mouseleave', ()=>{ eventLogHover = false; });
+  eventLogEl.addEventListener('dblclick', ()=>{ setEventLogFullscreen(!eventLogEl.classList.contains('is-fullscreen')); });
+}
+
+document.addEventListener('keydown', (ev)=>{
+  if(!eventLogEl) return;
+  const fullscreen = eventLogEl.classList.contains('is-fullscreen');
+  if(ev.key === 'Escape' && fullscreen){
+    setEventLogFullscreen(false);
+    return;
+  }
+  const wantsToggle = ev.key.toLowerCase() === 'f' || ev.key.toLowerCase() === 'l' || ev.key === 'Enter';
+  if(eventLogHover && wantsToggle){
+    ev.preventDefault();
+    setEventLogFullscreen(!fullscreen);
+  }
+});
 
 function pushEvent(text){
   const ts = new Date();
@@ -63,10 +91,114 @@ function renderEventLog(){
   eventListEl.innerHTML = '';
   for(const e of eventLog.entries){
     const li = document.createElement('li');
-    const time = document.createElement('span'); time.className='time'; time.textContent = e.t.toLocaleTimeString();
+    const time = document.createElement('span');
+    time.className='time';
+    time.textContent = e.t.toLocaleString('de-CH', {
+      timeZone: 'Europe/Zurich',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+      timeZoneName: 'short'
+    });
     li.appendChild(time);
     li.appendChild(document.createTextNode(e.text));
     eventListEl.appendChild(li);
+  }
+}
+
+const trackEvents = {
+  states: {}, // trackId -> movement/event state
+  seenIds: new Set(),
+  missingFrames: {},
+  moveThreshold: 0.018,
+  stopThreshold: 0.008,
+  movementFrames: 3,
+  stopFrames: 8,
+  loiterFrames: 90,
+  missingFramesLimit: 45
+};
+
+function trackSpeedNorm(track){
+  const mh = track.motionHistory || [];
+  if(mh.length < 2) return 0;
+  let total = 0;
+  let samples = 0;
+  const start = Math.max(1, mh.length - 5);
+  const frameDiag = Math.hypot(overlay.width || 640, overlay.height || 480);
+  for(let i=start; i<mh.length; i++){
+    const a = mh[i-1], b = mh[i];
+    total += Math.hypot(b[0] - a[0], b[1] - a[1]) / frameDiag;
+    samples++;
+  }
+  return samples ? total / samples : 0;
+}
+
+function updateTrackEventLog(activeTracks){
+  const activeIds = new Set(activeTracks.map(t => t.id));
+
+  for(const t of activeTracks){
+    let state = trackEvents.states[t.id];
+    if(!state){
+      state = {
+        moving: false,
+        moveFrames: 0,
+        stopFrames: 0,
+        stillFrames: 0,
+        loiterLogged: false,
+        lastColor: null
+      };
+      trackEvents.states[t.id] = state;
+      pushEvent(`${t.id} erfasst`);
+    }
+
+    trackEvents.missingFrames[t.id] = 0;
+    const speed = trackSpeedNorm(t);
+
+    if(speed >= trackEvents.moveThreshold){
+      state.moveFrames++;
+      state.stopFrames = 0;
+      state.stillFrames = 0;
+      state.loiterLogged = false;
+      if(!state.moving && state.moveFrames >= trackEvents.movementFrames){
+        state.moving = true;
+        pushEvent(`${t.id} startet Bewegung`);
+      }
+    }else if(speed <= trackEvents.stopThreshold){
+      state.stopFrames++;
+      state.moveFrames = 0;
+      state.stillFrames++;
+      if(state.moving && state.stopFrames >= trackEvents.stopFrames){
+        state.moving = false;
+        pushEvent(`${t.id} bleibt stehen`);
+      }
+      if(!state.loiterLogged && state.stillFrames >= trackEvents.loiterFrames){
+        state.loiterLogged = true;
+        pushEvent(`${t.id} verweilt / loitering`);
+      }
+    }else{
+      state.moveFrames = 0;
+      state.stopFrames = 0;
+    }
+
+    const color = t.appearanceSummary && t.appearanceSummary.name;
+    if(color && color !== 'Unknown' && color !== state.lastColor){
+      state.lastColor = color;
+      pushEvent(`${t.id} Merkmal Farbe: ${color}`);
+    }
+  }
+
+  for(const id of Object.keys(trackEvents.states)){
+    if(activeIds.has(id)) continue;
+    trackEvents.missingFrames[id] = (trackEvents.missingFrames[id] || 0) + 1;
+    if(trackEvents.missingFrames[id] === trackEvents.missingFramesLimit){
+      pushEvent(`${id} verschwindet aus dem Sichtfeld`);
+      delete trackEvents.states[id];
+      delete trackEvents.missingFrames[id];
+    }
   }
 }
 
@@ -228,28 +360,24 @@ function speedToColor(norm){
   return `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
 }
 
-// Map hue (0..1) to a simple color name
-function hueToName(h){
-  const t = (h % 1 + 1) % 1;
-  const sector = Math.floor(t * 8);
-  switch(sector){
-    case 0: return 'Red';
-    case 1: return 'Orange';
-    case 2: return 'Yellow';
-    case 3: return 'Green';
-    case 4: return 'Cyan';
-    case 5: return 'Blue';
-    case 6: return 'Purple';
-    case 7: return 'Magenta';
-    default: return 'Color';
-  }
-}
-
 // --- Appearance (color histogram) helpers ---
 // Offscreen canvas for cropping the video frames for appearance extraction
 const cropCanvas = document.createElement('canvas');
 const cropCtx = cropCanvas.getContext('2d');
 const APP_BINS = 16; // hue bins
+
+const COLOR_BUCKETS = [
+  { name: 'Black', neutral: 'black', rgb: [20, 20, 20] },
+  { name: 'White', neutral: 'white', rgb: [238, 238, 238] },
+  { name: 'Red', bins: [15, 0], hue: 0.0 },
+  { name: 'Orange', bins: [1, 2], hue: 0.08 },
+  { name: 'Yellow', bins: [3], hue: 0.16 },
+  { name: 'Green', bins: [4, 5, 6], hue: 0.33 },
+  { name: 'Cyan', bins: [7, 8], hue: 0.50 },
+  { name: 'Blue', bins: [9, 10], hue: 0.62 },
+  { name: 'Purple', bins: [11, 12], hue: 0.75 },
+  { name: 'Magenta', bins: [13, 14], hue: 0.88 }
+];
 
 // Convert RGB to HSV hue (0..1)
 function rgbToHue(r,g,b){
@@ -265,35 +393,191 @@ function rgbToHue(r,g,b){
   return h;
 }
 
-// Compute normalized hue histogram for a bbox on the video element
+function rgbToHsv(r,g,b){
+  r/=255; g/=255; b/=255;
+  const max = Math.max(r,g,b), min = Math.min(r,g,b);
+  const d = max - min;
+  let h = 0;
+  if(d !== 0){
+    if(max === r) h = (g - b) / d + (g < b ? 6 : 0);
+    else if(max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h /= 6;
+  }
+  const s = max === 0 ? 0 : d / max;
+  return [h, s, max];
+}
+
+function scaleBboxToOverlay(bbox){
+  const sourceW = video.videoWidth || overlay.width || 1;
+  const sourceH = video.videoHeight || overlay.height || 1;
+  const sx = (overlay.width || sourceW) / sourceW;
+  const sy = (overlay.height || sourceH) / sourceH;
+  const [x,y,w,h] = bbox;
+  return [x * sx, y * sy, w * sx, h * sy];
+}
+
+// Compute normalized hue histogram for a bbox in the original video coordinate space.
 function getAppearanceHistogram(bbox){
-  const [x,y,w,h] = bbox.map(v=>Math.max(0, Math.round(v)));
+  const videoW = video.videoWidth || video.width || 1;
+  const videoH = video.videoHeight || video.height || 1;
+  const [rawX, rawY, rawW, rawH] = bbox;
+  // Focus on the central torso area. Full person boxes often include background,
+  // floor, walls, and face/skin tones, which makes the color signature jumpy.
+  const x = Math.max(0, Math.round(rawX + rawW * 0.22));
+  const y = Math.max(0, Math.round(rawY + rawH * 0.28));
+  const w = Math.max(1, Math.round(rawW * 0.56));
+  const h = Math.max(1, Math.round(rawH * 0.38));
+  const sx = Math.min(x, videoW - 1);
+  const sy = Math.min(y, videoH - 1);
+  const sw = Math.max(1, Math.min(w, videoW - sx));
+  const sh = Math.max(1, Math.min(h, videoH - sy));
   // small crop size to reduce cost
-  const CW = 64, CH = 64;
+  const CW = 80, CH = 80;
   cropCanvas.width = CW; cropCanvas.height = CH;
   try{
     // draw the bbox area from the video to the small canvas
-    cropCtx.drawImage(video, x, y, w, h, 0, 0, CW, CH);
+    cropCtx.drawImage(video, sx, sy, sw, sh, 0, 0, CW, CH);
   }catch(e){
     // drawing can fail if video not ready
     return new Array(APP_BINS).fill(1/APP_BINS);
   }
   const img = cropCtx.getImageData(0,0,CW,CH).data;
   const hist = new Array(APP_BINS).fill(0);
+  const backgroundHist = new Array(APP_BINS).fill(0);
+  const backgroundNeutral = { black: 0, white: 0 };
+  const backgroundRgb = { r: 0, g: 0, b: 0, count: 0 };
+  const neutral = { black: 0, white: 0 };
+  let backgroundCount = 0;
   let count = 0;
-  for(let i=0;i<img.length;i+=4){
-    const r = img[i], g = img[i+1], b = img[i+2], a = img[i+3];
-    if(a < 64) continue; // skip transparent-ish pixels
-    const v = Math.max(r,g,b);
-    if(v < 16) continue; // ignore near-black pixels
-    const hval = rgbToHue(r,g,b);
-    const bin = Math.floor(hval * APP_BINS) % APP_BINS;
-    hist[bin] += 1;
-    count++;
+
+  function neutralClass(sat, val){
+    if(val < 0.30) return 'black';
+    if(val > 0.65 && sat < 0.25) return 'white';
+    return null;
   }
-  if(count === 0) return new Array(APP_BINS).fill(1/APP_BINS);
+
+  function addPixelToHist(target, r, g, b, a){
+    if(a < 64) return false; // skip transparent-ish pixels
+    const [hval, sat, val] = rgbToHsv(r,g,b);
+    const neutralName = neutralClass(sat, val);
+    if(neutralName) return neutralName;
+    if(val < 0.08 || val > 0.96) return false; // ignore near-black and blown-out pixels
+    if(sat < 0.18) return false; // ignore grey/white/black pixels, which have unstable hue
+    const bin = Math.floor(hval * APP_BINS) % APP_BINS;
+    target[bin] += 1;
+    return true;
+  }
+
+  // Estimate likely background colors from the crop border. This is intentionally
+  // simple and local: it removes wall/floor colors without needing another model.
+  for(let py=0; py<CH; py++){
+    for(let px=0; px<CW; px++){
+      const border = px < 7 || px >= CW - 7 || py < 7 || py >= CH - 7;
+      if(!border) continue;
+      const i = (py * CW + px) * 4;
+      const bgResult = addPixelToHist(backgroundHist, img[i], img[i+1], img[i+2], img[i+3]);
+      if(bgResult){
+        backgroundRgb.r += img[i];
+        backgroundRgb.g += img[i+1];
+        backgroundRgb.b += img[i+2];
+        backgroundRgb.count++;
+        if(bgResult === 'black' || bgResult === 'white') backgroundNeutral[bgResult]++;
+        backgroundCount++;
+      }
+    }
+  }
+  if(backgroundCount > 0){
+    for(let i=0;i<APP_BINS;i++) backgroundHist[i] /= backgroundCount;
+    backgroundNeutral.black /= backgroundCount;
+    backgroundNeutral.white /= backgroundCount;
+  }
+  const bgAvg = backgroundRgb.count > 0
+    ? [backgroundRgb.r / backgroundRgb.count, backgroundRgb.g / backgroundRgb.count, backgroundRgb.b / backgroundRgb.count]
+    : null;
+
+  function contrastWeight(r, g, b){
+    if(!bgAvg) return 1;
+    const dist = Math.hypot(r - bgAvg[0], g - bgAvg[1], b - bgAvg[2]);
+    const normalized = Math.max(0, Math.min(1, dist / 100));
+    return 0.25 + normalized * 0.75;
+  }
+
+  for(let py=0; py<CH; py++){
+    for(let px=0; px<CW; px++){
+      const nx = (px + 0.5) / CW - 0.5;
+      const ny = (py + 0.5) / CH - 0.5;
+      const ellipse = (nx / 0.46) ** 2 + (ny / 0.52) ** 2;
+      if(ellipse > 1) continue;
+
+      const i = (py * CW + px) * 4;
+      const r = img[i], g = img[i+1], b = img[i+2], a = img[i+3];
+      if(a < 64) continue;
+      const [hval, sat, val] = rgbToHsv(r,g,b);
+      const weight = contrastWeight(r, g, b);
+      const neutralName = neutralClass(sat, val);
+      if(neutralName){
+        const bgPenalty = Math.max(0.10, 1 - backgroundNeutral[neutralName]);
+        const neutralWeight = weight * bgPenalty;
+        neutral[neutralName] += neutralWeight;
+        count += neutralWeight;
+        continue;
+      }
+      if(val < 0.08 || val > 0.96) continue;
+      if(sat < 0.18) continue;
+      const bin = Math.floor(hval * APP_BINS) % APP_BINS;
+      const bgPenalty = Math.max(0.20, 1 - backgroundHist[bin] * 2.2);
+      const colorWeight = weight * bgPenalty;
+      hist[bin] += colorWeight;
+      count += colorWeight;
+    }
+  }
+  if(count < 45){
+    const emptyHist = new Array(APP_BINS).fill(1/APP_BINS);
+    emptyHist.neutral = { black: 0, white: 0 };
+    return emptyHist;
+  }
   for(let i=0;i<APP_BINS;i++) hist[i] /= count; // normalize
+  hist.neutral = {
+    black: neutral.black / count,
+    white: neutral.white / count
+  };
   return hist;
+}
+
+function getAppearanceSummary(hist){
+  if(!hist || !hist.length) return { name: 'Unknown', hue: 0, confidence: 0 };
+  const scores = COLOR_BUCKETS.map(bucket => {
+    const score = bucket.neutral
+      ? ((hist.neutral && hist.neutral[bucket.neutral]) || 0)
+      : bucket.bins.reduce((sum, bin) => sum + (hist[bin] || 0), 0);
+    const hue = bucket.hue;
+    return { name: bucket.name, hue, rgb: bucket.rgb, score };
+  }).sort((a,b)=>b.score-a.score);
+  const best = scores[0] || { name: 'Unknown', hue: 0, rgb: null, score: 0 };
+  const second = scores[1] || { score: 0 };
+  const confidence = Math.max(0, Math.min(1, best.score + Math.max(0, best.score - second.score)));
+  return { name: best.name, hue: best.hue, rgb: best.rgb, confidence };
+}
+
+function cloneAppearance(hist){
+  if(!hist) return null;
+  const clone = hist.slice();
+  clone.neutral = {
+    black: (hist.neutral && hist.neutral.black) || 0,
+    white: (hist.neutral && hist.neutral.white) || 0
+  };
+  return clone;
+}
+
+function blendAppearance(current, next, alpha){
+  if(!current) return cloneAppearance(next);
+  for(let k=0;k<next.length;k++) current[k] = alpha*next[k] + (1-alpha)*current[k];
+  current.neutral = current.neutral || { black: 0, white: 0 };
+  const nextNeutral = next.neutral || { black: 0, white: 0 };
+  current.neutral.black = alpha*nextNeutral.black + (1-alpha)*current.neutral.black;
+  current.neutral.white = alpha*nextNeutral.white + (1-alpha)*current.neutral.white;
+  return current;
 }
 
 // Bhattacharyya coefficient between two normalized histograms (0..1)
@@ -329,6 +613,7 @@ class Track{
     this.startTime = Date.now();
     // motionHistory keeps recent centroids for motion visualization and matching
     this.motionHistory = [];
+    this.appearanceSummary = { name: 'Unknown', hue: 0, confidence: 0 };
   }
 
   predict(){
@@ -486,11 +771,20 @@ class Tracker{
         // update appearance (EMA)
         const detApp = detections[dj].appearance || null;
         if(detApp){
-          if(!this.tracks[ti].appearance) this.tracks[ti].appearance = detApp.slice();
+          if(!this.tracks[ti].appearance) this.tracks[ti].appearance = cloneAppearance(detApp);
           else{
-            const alpha = 0.6; // EMA weight for new appearance
-            for(let k=0;k<detApp.length;k++) this.tracks[ti].appearance[k] = alpha*detApp[k] + (1-alpha)*this.tracks[ti].appearance[k];
+            const mh = this.tracks[ti].motionHistory || [];
+            let speedNorm = 0;
+            if(mh.length >= 2){
+              const a = mh[mh.length - 2];
+              const b = mh[mh.length - 1];
+              const frameDiag = Math.hypot(overlay.width || 640, overlay.height || 480);
+              speedNorm = Math.min(1, Math.hypot(b[0] - a[0], b[1] - a[1]) / (frameDiag / 35));
+            }
+            const alpha = 0.08 + speedNorm * 0.22;
+            this.tracks[ti].appearance = blendAppearance(this.tracks[ti].appearance, detApp, alpha);
           }
+          this.tracks[ti].appearanceSummary = getAppearanceSummary(this.tracks[ti].appearance);
         }
       }
       // store unmatched arrays on lastMatches as well
@@ -510,7 +804,8 @@ class Tracker{
     for(const dj of unmatchedDetections){
       const det = detections[dj];
       const trk = new Track(det.bbox, `ID${this.nextId++}`);
-      trk.appearance = det.appearance ? det.appearance.slice() : null;
+      trk.appearance = cloneAppearance(det.appearance);
+      trk.appearanceSummary = getAppearanceSummary(trk.appearance);
       this.tracks.push(trk);
     }
 
@@ -756,7 +1051,8 @@ function drawOverlay(){
     // compute histogram/motion placement with clamping so it's visible on small screens
     const bins = (t.appearance && t.appearance.length) || APP_BINS;
     const barW = Math.max(4, Math.min(10, Math.round(overlay.width/140)));
-    const histW = bins * barW;
+    const neutralBars = 2;
+    const histW = (bins + neutralBars) * barW;
     const histH = 20;
     let hx = px + pw + 8; // desired right side
     let hy = py;
@@ -768,6 +1064,21 @@ function drawOverlay(){
     if(t.appearance){
       ctx.fillStyle = 'rgba(0,0,0,0.5)';
       ctx.fillRect(hx - 2, hy - 2, histW + 4, histH + 4);
+      const neutralVals = [
+        { val: (t.appearance.neutral && t.appearance.neutral.black) || 0, rgb: [20,20,20], stroke: 'rgba(255,255,255,0.55)' },
+        { val: (t.appearance.neutral && t.appearance.neutral.white) || 0, rgb: [238,238,238], stroke: 'rgba(0,0,0,0.7)' }
+      ];
+      for(let i=0;i<neutralVals.length;i++){
+        const item = neutralVals[i];
+        const bh = Math.max(1, Math.round(item.val * histH));
+        const bx = hx + i*barW;
+        const by = hy + (histH - bh);
+        ctx.fillStyle = `rgb(${item.rgb[0]},${item.rgb[1]},${item.rgb[2]})`;
+        ctx.fillRect(bx, by, barW - 1, bh);
+        ctx.strokeStyle = item.stroke;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(bx, by, barW - 1, bh);
+      }
       for(let i=0;i<bins;i++){
         const val = t.appearance[i] || 0;
         const hcol = i / bins; // hue
@@ -775,25 +1086,29 @@ function drawOverlay(){
         ctx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
         const bw = barW - 1;
         const bh = Math.max(1, Math.round(val * histH));
-        const bx = hx + i*barW;
+        const bx = hx + (i + neutralBars)*barW;
         const by = hy + (histH - bh);
         ctx.fillRect(bx, by, bw, bh);
       }
       // Dominant color swatch + percent (most intuitive summary for viewers)
       try{
-        const maxIdx = t.appearance.reduce((mi,v,i)=> v>t.appearance[mi]?i:mi, 0);
-        const maxVal = t.appearance[maxIdx] || 0;
-        const hue = maxIdx / bins;
+        const summary = t.appearanceSummary || getAppearanceSummary(t.appearance);
+        const hue = summary.hue || 0;
         const swSize = Math.max(12, Math.round(histH));
         let swX = hx + histW + 8;
         const swY = hy;
         if(swX + swSize + 40 > overlay.width) swX = hx - swSize - 8; // place left if not enough space
-        const rgb = hsvToRgb(hue, 1, 0.85);
+        const rgb = summary.rgb || hsvToRgb(hue, 1, 0.85);
         ctx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
         ctx.fillRect(swX, swY, swSize, swSize);
+        if(summary.name === 'White'){
+          ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(swX, swY, swSize, swSize);
+        }
         // text label
-        const name = hueToName(hue);
-        const pct = Math.round(maxVal * 100);
+        const name = summary.name || 'Unknown';
+        const pct = Math.round((summary.confidence || 0) * 100);
         ctx.fillStyle = '#fff';
         ctx.font = '12px sans-serif';
         ctx.textBaseline = 'top';
@@ -931,6 +1246,8 @@ function drawOverlay(){
     if(appBtn) appBtn.style.display = 'none';
     if(speedBtn) speedBtn.style.display = 'none';
   }catch(e){/* ignore */}
+
+  updateTrackEventLog(active);
 
   // --- Proximity / Grouping visualization and event detection ---
   // Debug / explainable overlays: predicted boxes, assignment lines, per-pair scores, unmatched highlights
@@ -1180,9 +1497,10 @@ async function detectionLoop(){
         const persons = predictions.filter(p => p.class === 'person' && p.score > 0.4);
         // For each person detection, compute appearance histogram (fast small crop)
         for(const p of persons){
-          const bbox = p.bbox;
-          const app = getAppearanceHistogram(bbox);
-          personDetections.push({ bbox: bbox, score: p.score, appearance: app });
+          const sourceBBox = p.bbox;
+          const displayBBox = scaleBboxToOverlay(sourceBBox);
+          const app = getAppearanceHistogram(sourceBBox);
+          personDetections.push({ bbox: displayBBox, score: p.score, appearance: app });
         }
       // Update: run predict then update with detections
       tracker.predict();
@@ -1224,7 +1542,7 @@ async function start(){
         try{ await tf.setBackend('webgl'); }catch(e){}
         await tf.ready();
       }
-      model = await cocoSsd.load();
+      model = await cocoSsd.load({ modelUrl: COCO_SSD_MODEL_URL });
     }catch(err){
       console.error('Modell-Ladefehler', err);
       statusLabel.textContent = 'Fehler beim Laden des Modells';
@@ -1278,6 +1596,8 @@ function stop(){
 
   // Clear tracks and overlay
   tracker.tracks = [];
+  trackEvents.states = {};
+  trackEvents.missingFrames = {};
   const ctx = overlay.getContext('2d');
   ctx.clearRect(0,0,overlay.width, overlay.height);
 }
