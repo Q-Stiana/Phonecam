@@ -1610,8 +1610,6 @@ stopButton.addEventListener('click', () => { stop(); });
 if(facingSelect){
   // Initialize select to default
   facingSelect.value = facingMode;
-  // Disable selection initially so laptop front camera is used for first tests
-  facingSelect.disabled = true;
   facingSelect.addEventListener('change', async (ev) =>{
     const newMode = facingSelect.value;
     // Update desired facing mode
