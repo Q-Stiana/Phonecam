@@ -24,23 +24,22 @@ loading are more reliable through `localhost`.
 
 ## TouchDesigner local WebSocket
 
-The browser sends tracking and event data to TouchDesigner locally:
+The browser sends lean tracking data to the local relay:
 
 ```text
-ws://127.0.0.1:9980
+ws://127.0.0.1:8001
 ```
 
-In TouchDesigner, create a WebSocket DAT that listens on port `9980`.
-The browser keeps running even if TouchDesigner is not open yet, and reconnects
-automatically.
-
-Message types:
+Each tracking frame contains `timestamp`, `count`, `width`, `height`, and a
+`people` list. Each visible person contains only:
 
 ```text
-hello     connection test
-tracking  active IDs, normalized position, color, speed, still/observed time
-event     Monitoring Log entries with Zurich timestamp
+id, timestamp, x, y, w, h, color, dwell
 ```
+
+`x`, `y`, `w`, and `h` are normalized bounding-box values. `dwell` is seconds
+since the person was first observed. Adjust the send rate with the
+`TD send interval (ms)` slider in the browser.
 
 ## TouchDesigner WebSocket bridge
 
@@ -58,6 +57,27 @@ ws://127.0.0.1:8001
 
 The browser sends tracking JSON to the relay, and the relay forwards it to
 TouchDesigner. In TouchDesigner, set the WebSocket DAT to client/connect mode.
+Use `touch_designer.py` as the WebSocket DAT callback script. Create Table DATs
+named `phonecam_people`, `phonecam_info`, and `phonecam_id1_color` to receive
+broken-out rows.
+
+`phonecam_id1_color` exposes only the current color for `ID1`:
+
+```text
+present, color, r, g, b, hue, saturation, value, dwell, timestamp
+```
+
+Use the `r`, `g`, and `b` rows as color parameters, or use `hue`, `saturation`,
+and `value` for HSV-style filtering.
+
+The bridge prints connection and occasional relay summaries only. Change the
+summary cadence with:
+
+```sh
+python websocket_bridge.py --log-every 2
+```
+
+Use `--log-every 0` to disable message summaries.
 
 ## JavaScript layout
 

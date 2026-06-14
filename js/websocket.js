@@ -2,7 +2,7 @@
 
 // TouchDesigner WebSocket DAT should listen on this local URL/port.
 // This stays fully offline when Browser and TouchDesigner run on the same computer.
-const TOUCHDESIGNER_WS_URL = 'ws://127.0.0.1:9980';
+const TOUCHDESIGNER_WS_URL = 'ws://127.0.0.1:8001';
 let touchDesignerSocket = null;
 let touchDesignerReconnectTimer = null;
 let lastTouchDesignerSend = 0;
@@ -78,52 +78,37 @@ function sendTouchDesignerEvent(text, date){
 function getTrackTransportState(track){
   const eventState = trackEvents && trackEvents.states ? trackEvents.states[track.id] : null;
   const bbox = track.lastBBox || [0, 0, 0, 0];
-  const centroid = bboxToCentroid(bbox);
-  const speed = typeof trackSpeedNorm === 'function' ? trackSpeedNorm(track) : 0;
-  const observedMs = eventState && eventState.seenAt ? Date.now() - eventState.seenAt : 0;
-  const stillMs = eventState && eventState.stillSince ? Date.now() - eventState.stillSince : 0;
+  const frameWidth = overlay.width || 1;
+  const frameHeight = overlay.height || 1;
+  const timestamp = Date.now();
+  const dwellMs = eventState && eventState.seenAt ? timestamp - eventState.seenAt : timestamp - track.startTime;
   const colorSummary = track.appearanceSummary || {};
-  const redScore = typeof getAppearanceBucketScore === 'function'
-    ? getAppearanceBucketScore(track.appearance, 'Red')
-    : 0;
 
   return {
     id: track.id,
-    x: overlay.width ? centroid[0] / overlay.width : 0,
-    y: overlay.height ? centroid[1] / overlay.height : 0,
-    px: Math.round(centroid[0]),
-    py: Math.round(centroid[1]),
-    bbox: {
-      x: Math.round(bbox[0]),
-      y: Math.round(bbox[1]),
-      w: Math.round(bbox[2]),
-      h: Math.round(bbox[3])
-    },
-    speed,
-    moving: !!(eventState && eventState.moving),
-    observedMs,
-    stillMs,
+    timestamp,
+    x: bbox[0] / frameWidth,
+    y: bbox[1] / frameHeight,
+    w: bbox[2] / frameWidth,
+    h: bbox[3] / frameHeight,
     color: colorSummary.name || 'Unknown',
-    colorConfidence: colorSummary.confidence || 0,
-    redScore,
-    redActive: redScore >= 0.30,
-    colorRgb: colorSummary.rgb || null
+    dwell: Math.max(0, dwellMs / 1000)
   };
 }
 
 function sendTouchDesignerTracking(activeTracks){
   const now = performance.now();
-  if(now - lastTouchDesignerSend < 100) return;
+  const intervalMs = Math.max(16, Number(touchDesignerSendIntervalMs) || 100);
+  if(now - lastTouchDesignerSend < intervalMs) return;
   lastTouchDesignerSend = now;
 
   sendTouchDesignerPayload({
     type: 'tracking',
-    source: 'phonecam-browser',
     timestamp: Date.now(),
     count: activeTracks.length,
     width: overlay.width || 0,
     height: overlay.height || 0,
-    tracks: activeTracks.map(getTrackTransportState)
+    people: activeTracks.map(getTrackTransportState)
   });
 }
 

@@ -1,7 +1,10 @@
 import asyncio
+import argparse
 import base64
 import hashlib
+import json
 import struct
+import time
 
 
 HOST = "127.0.0.1"
@@ -9,6 +12,8 @@ PORT = 8001
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 clients = set()
+last_message_log = 0
+message_count = 0
 
 
 async def read_http_headers(reader):
@@ -113,6 +118,32 @@ async def broadcast(sender, message):
         clients.discard(client)
 
 
+def message_summary(message):
+    try:
+        payload = json.loads(message)
+    except json.JSONDecodeError:
+        return f"text {len(message)} bytes"
+
+    if payload.get("type") == "tracking":
+        people = payload.get("people", payload.get("tracks", []))
+        return f"tracking people={len(people)} clients={len(clients)}"
+    return f"{payload.get('type', 'json')} {len(message)} bytes"
+
+
+def log_message(message, log_every):
+    global last_message_log, message_count
+    message_count += 1
+    if log_every <= 0:
+        return
+
+    now = time.monotonic()
+    if now - last_message_log < log_every:
+        return
+
+    last_message_log = now
+    print(f"relayed {message_count} messages; last {message_summary(message)}")
+
+
 async def handle_client(reader, writer):
     peer = writer.get_extra_info("peername")
     if not await websocket_handshake(reader, writer):
@@ -137,7 +168,7 @@ async def handle_client(reader, writer):
                 continue
 
             message = payload.decode("utf-8", errors="replace")
-            print(message)
+            log_message(message, handle_client.log_every)
             await broadcast(writer, message)
     except (ConnectionError, asyncio.IncompleteReadError, BrokenPipeError):
         pass
@@ -158,6 +189,15 @@ async def main():
 
 if __name__ == "__main__":
     try:
+        parser = argparse.ArgumentParser(description="Local WebSocket relay for Phonecam and TouchDesigner.")
+        parser.add_argument(
+            "--log-every",
+            type=float,
+            default=5.0,
+            help="Seconds between relay status log lines. Use 0 to disable message logs.",
+        )
+        args = parser.parse_args()
+        handle_client.log_every = args.log_every
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\nrelay stopped")

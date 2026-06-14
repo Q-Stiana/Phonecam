@@ -250,6 +250,8 @@ const minHitsEl = document.getElementById('minHits');
 const minHitsVal = document.getElementById('minHitsVal');
 const frameSkipEl = document.getElementById('frameSkip');
 const frameSkipVal = document.getElementById('frameSkipVal');
+const touchDesignerIntervalEl = document.getElementById('touchDesignerInterval');
+const touchDesignerIntervalVal = document.getElementById('touchDesignerIntervalVal');
 
 function updateSettingsUI(){
   if(!tracker) return;
@@ -261,12 +263,17 @@ function updateSettingsUI(){
   minHitsVal.textContent = minHitsEl.value;
   frameSkip = Number(frameSkipEl.value);
   frameSkipVal.textContent = frameSkipEl.value;
+  if(touchDesignerIntervalEl){
+    touchDesignerSendIntervalMs = Number(touchDesignerIntervalEl.value);
+    if(touchDesignerIntervalVal) touchDesignerIntervalVal.textContent = touchDesignerIntervalEl.value;
+  }
 }
 
 if(maxAgeEl){ maxAgeEl.addEventListener('input', updateSettingsUI); }
 if(iouEl){ iouEl.addEventListener('input', updateSettingsUI); }
 if(minHitsEl){ minHitsEl.addEventListener('input', updateSettingsUI); }
 if(frameSkipEl){ frameSkipEl.addEventListener('input', updateSettingsUI); }
+if(touchDesignerIntervalEl){ touchDesignerIntervalEl.addEventListener('input', updateSettingsUI); }
 // initialize UI values
 updateSettingsUI();
 

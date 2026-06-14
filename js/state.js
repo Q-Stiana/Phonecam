@@ -16,6 +16,7 @@ let facingMode = 'auto'; // 'auto', 'user' (front), or 'environment' (rear)
 let selectedCameraId = ''; // exact camera deviceId when a physical camera is selected
 let frameSkip = 2; // process detection every N frames (reduce CPU)
 let frameCounter = 0;
+let touchDesignerSendIntervalMs = 100; // throttle tracking WebSocket messages
 
 // Proximity / Grouping state
 const proximity = {
