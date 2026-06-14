@@ -93,14 +93,22 @@ function roundRect(ctx, x, y, w, h, r, fill, stroke){
   if(stroke) ctx.stroke();
 }
 
-// Map normalized speed (0..1) to color from green (slow) -> yellow -> red (fast)
-function speedToColor(norm){
-  // clamp
+const SPEED_COLOR_STEPS = [
+  { name: 'still', label: 'Stillstand', max: 0.08, color: '#B8C0CC' },
+  { name: 'slow', label: 'Langsam', max: 0.25, color: '#00E5FF' },
+  { name: 'normal', label: 'Normal', max: 0.55, color: '#7CFF6B' },
+  { name: 'fast', label: 'Schnell', max: 0.82, color: '#FFD166' },
+  { name: 'alert', label: 'Auffällig', max: 1.01, color: '#FF4D4D' }
+];
+
+function speedStepForNorm(norm){
   const t = Math.max(0, Math.min(1, norm));
-  // green to red via hue 0.33 -> 0
-  const hue = 0.33 * (1 - t); // 0.33 (green) down to 0 (red)
-  const rgb = hsvToRgb(hue, 1, 0.9);
-  return `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+  return SPEED_COLOR_STEPS.find(step => t <= step.max) || SPEED_COLOR_STEPS[SPEED_COLOR_STEPS.length - 1];
+}
+
+// Map normalized speed (0..1) to clear surveillance-like categories.
+function speedToColor(norm){
+  return speedStepForNorm(norm).color;
 }
 
 // Parameters for tracker

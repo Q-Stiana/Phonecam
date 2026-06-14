@@ -163,10 +163,16 @@ function drawOverlay(){
       ctx.fillText('Appearance', appX + legW + 8, appY - 1);
       // Speed legend under appearance
       const spY = appY + legH + 6;
-      const spGrad = ctx.createLinearGradient(appX, spY, appX + legW, spY);
-      spGrad.addColorStop(0, speedToColor(0)); spGrad.addColorStop(1, speedToColor(1));
-      ctx.fillStyle = spGrad;
-      roundRect(ctx, appX, spY, legW, legH, 3, true, true);
+      const speedSteps = typeof SPEED_COLOR_STEPS !== 'undefined' ? SPEED_COLOR_STEPS : [];
+      const stepW = speedSteps.length ? legW / speedSteps.length : legW;
+      for(let si=0; si<Math.max(1, speedSteps.length); si++){
+        const step = speedSteps[si] || { color: speedToColor(si) };
+        ctx.fillStyle = step.color;
+        ctx.fillRect(appX + Math.round(si * stepW), spY, Math.ceil(stepW), legH);
+      }
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 1;
+      roundRect(ctx, appX, spY, legW, legH, 3, false, true);
       ctx.fillStyle = '#fff';
       ctx.fillText('Speed', appX + legW + 8, spY - 1);
       // Dwell legend under speed (shows description + current seconds)

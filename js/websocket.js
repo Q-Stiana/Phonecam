@@ -84,6 +84,17 @@ function getTrackTransportState(track){
   const timestamp = Date.now();
   const dwellMs = eventState && eventState.seenAt ? timestamp - eventState.seenAt : timestamp - track.startTime;
   const speed = typeof trackSpeedNorm === 'function' ? trackSpeedNorm(track) : 0;
+  const motionIntent = typeof trackMotionIntent === 'function' ? trackMotionIntent(track) : null;
+  const motionState = typeof trackMotionState === 'function'
+    ? trackMotionState(speed, motionIntent)
+    : { name: 'unknown', label: 'unklar', color: '#FFFFFF' };
+  const boxArea = typeof trackBoxArea === 'function' ? trackBoxArea(track) : ((bbox[2] || 0) * (bbox[3] || 0));
+  const visibilityRatio = eventState && eventState.maxBoxArea
+    ? Math.max(0, Math.min(1, boxArea / eventState.maxBoxArea))
+    : 1;
+  const predicted = typeof trackEvents !== 'undefined'
+    ? track.time_since_update >= trackEvents.predictedFrames
+    : track.time_since_update > 0;
   const observedMs = eventState && eventState.seenAt ? timestamp - eventState.seenAt : 0;
   const stillMs = eventState && eventState.stillSince ? timestamp - eventState.stillSince : 0;
   const dwellScore = typeof dwellScoreForState === 'function' ? dwellScoreForState(eventState) : 0;
@@ -118,6 +129,20 @@ function getTrackTransportState(track){
       h: Math.round(bbox[3])
     },
     speed,
+    motionState: motionState.name,
+    motionStateLabel: motionState.label,
+    motionColor: motionState.color,
+    predicted,
+    visibilityRatio,
+    visibilityState: eventState && eventState.visibilityState ? eventState.visibilityState : 'clear',
+    direction: motionIntent ? motionIntent.direction : 'unknown',
+    directionText: motionIntent ? motionIntent.directionText : 'unklar',
+    directionX: motionIntent ? motionIntent.dx : 0,
+    directionY: motionIntent ? motionIntent.dy : 0,
+    approachingCenter: !!(motionIntent && motionIntent.approachingCenter),
+    leavingCenter: !!(motionIntent && motionIntent.leavingCenter),
+    instability: motionIntent ? motionIntent.instability : 0,
+    nervous: !!(motionIntent && motionIntent.nervous),
     moving: !!(eventState && eventState.moving),
     zone: eventState && eventState.zone ? eventState.zone : 'UNKNOWN',
     observedMs,
