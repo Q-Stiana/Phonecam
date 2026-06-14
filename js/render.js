@@ -14,7 +14,6 @@ function drawOverlay(){
   ctx.textBaseline = 'top';
 
   const active = tracker.getActiveTracks();
-  sendTouchDesignerTracking(active);
   for(const t of active){
     const [x,y,w,h] = t.lastBBox;
     // Expand box slightly for better visibility (pad by 8% of max(dim) or at least 8px)
@@ -531,7 +530,7 @@ function drawOverlay(){
       }else{
         gid = `G${gidCounter++}`;
         proximity.groups[gid] = { id: gid, members: comp.slice(), created: Date.now() };
-        pushEvent(`Group ${gid} formed (${comp.length} people)`);
+        pushEvent(`Gruppe ${gid} gebildet (${comp.length} IDs)`);
       }
       // draw bounding box for this group
       const points = comp.map(id=> idToNode[id].c);
@@ -573,15 +572,18 @@ function drawOverlay(){
         proximity.stableMembership[id] = newVal;
         proximity.counters[id] = 0;
         if(!stableVal && newVal){
-          pushEvent(`${id} joined ${newVal}`);
+          pushEvent(`${id} trifft ${newVal} (close proximity)`);
+          pushEvent(`${id} scheint mit einer Person zu sprechen`);
         }else if(stableVal && newVal && stableVal !== newVal){
-          pushEvent(`${id} moved ${stableVal}â†’${newVal}`);
+          pushEvent(`${id} wechselt von ${stableVal} zu ${newVal}`);
         }else if(stableVal && !newVal){
-          pushEvent(`${id} left ${stableVal}`);
+          pushEvent(`${id} entfernt sich von ${stableVal}`);
         }
       }
     }
     // update lastMembership to immediate view
     proximity.lastMembership = newMembership;
   }catch(e){ /* ignore proximity errors */ }
+
+  sendTouchDesignerTracking(active);
 }

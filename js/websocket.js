@@ -80,18 +80,64 @@ function getTrackTransportState(track){
   const bbox = track.lastBBox || [0, 0, 0, 0];
   const frameWidth = overlay.width || 1;
   const frameHeight = overlay.height || 1;
+  const centroid = bboxToCentroid(bbox);
   const timestamp = Date.now();
   const dwellMs = eventState && eventState.seenAt ? timestamp - eventState.seenAt : timestamp - track.startTime;
+  const speed = typeof trackSpeedNorm === 'function' ? trackSpeedNorm(track) : 0;
+  const observedMs = eventState && eventState.seenAt ? timestamp - eventState.seenAt : 0;
+  const stillMs = eventState && eventState.stillSince ? timestamp - eventState.stillSince : 0;
+  const dwellScore = typeof dwellScoreForState === 'function' ? dwellScoreForState(eventState) : 0;
+  const escalation = typeof escalationForScore === 'function' ? escalationForScore(dwellScore) : 0;
+  const burnIn = typeof burnInForState === 'function' ? burnInForState(eventState) : 0;
+  const groupId = proximity && proximity.stableMembership
+    ? proximity.stableMembership[track.id] || null
+    : null;
   const colorSummary = track.appearanceSummary || {};
+  const redScore = typeof getAppearanceBucketScore === 'function'
+    ? getAppearanceBucketScore(track.appearance, 'Red')
+    : 0;
+  const isSlow = !!(eventState && eventState.slowSince);
+  const isLoitering = !!(eventState && eventState.loiterLogged);
+  const interaction = groupId
+    ? 'close_proximity'
+    : (isLoitering ? 'loitering' : (isSlow ? 'unclear_motion' : 'none'));
 
   return {
     id: track.id,
     timestamp,
-    x: bbox[0] / frameWidth,
-    y: bbox[1] / frameHeight,
+    x: centroid[0] / frameWidth,
+    y: centroid[1] / frameHeight,
     w: bbox[2] / frameWidth,
     h: bbox[3] / frameHeight,
+    px: Math.round(centroid[0]),
+    py: Math.round(centroid[1]),
+    bbox: {
+      x: Math.round(bbox[0]),
+      y: Math.round(bbox[1]),
+      w: Math.round(bbox[2]),
+      h: Math.round(bbox[3])
+    },
+    speed,
+    moving: !!(eventState && eventState.moving),
+    zone: eventState && eventState.zone ? eventState.zone : 'UNKNOWN',
+    observedMs,
+    observedSeconds: Math.round(observedMs / 1000),
+    stillMs,
+    stillSeconds: Math.round(stillMs / 1000),
+    dwellScore,
+    escalation,
+    burnIn,
+    burnInActive: burnIn >= 0.45,
+    groupId,
+    inGroup: !!groupId,
+    interaction,
+    slowMovement: isSlow,
+    loitering: isLoitering,
     color: colorSummary.name || 'Unknown',
+    colorConfidence: colorSummary.confidence || 0,
+    redScore,
+    redActive: redScore >= 0.30,
+    colorRgb: colorSummary.rgb || null,
     dwell: Math.max(0, dwellMs / 1000)
   };
 }
