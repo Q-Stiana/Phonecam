@@ -319,6 +319,18 @@ if(fullscreenButton){
   });
 }
 
+const videoContainerEl = document.querySelector('.video-container');
+if(videoContainerEl){
+  videoContainerEl.addEventListener('dblclick', () => {
+    if(document.fullscreenElement || document.body.classList.contains('installation-fullscreen')){
+      if(document.exitFullscreen) document.exitFullscreen().catch(()=>{});
+      exitInstallationFullscreen();
+    }else{
+      enterInstallationFullscreen();
+    }
+  });
+}
+
 document.addEventListener('fullscreenchange', () => {
   if(!document.fullscreenElement) exitInstallationFullscreen();
   else setTimeout(resizeOverlay, 120);
