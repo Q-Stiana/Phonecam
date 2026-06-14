@@ -11,7 +11,10 @@ async function detectionLoop(){
     let personDetections = [];
     if(frameCounter % frameSkip === 0){
       const predictions = await model.detect(video);
-        const persons = predictions.filter(p => p.class === 'person' && p.score > 0.4);
+        const persons = predictions
+          .filter(p => p.class === 'person' && p.score > 0.4)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, MAX_TRACKED_PEOPLE);
         // For each person detection, compute appearance histogram (fast small crop)
         for(const p of persons){
           const sourceBBox = p.bbox;

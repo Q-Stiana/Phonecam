@@ -2,19 +2,47 @@
 
 // (Replaced by Tracker class above)
 
+const TRACK_ID_COLORS = [
+  '#00E5FF',
+  '#FF4D6D',
+  '#FFD166',
+  '#7CFF6B',
+  '#B388FF',
+  '#FF8C42',
+  '#4D96FF',
+  '#F15BB5',
+  '#9BDE7E',
+  '#FEE440'
+];
+
+function colorForTrackId(id){
+  const match = String(id).match(/\d+/);
+  if(match){
+    const number = Math.max(1, parseInt(match[0], 10));
+    return TRACK_ID_COLORS[(number - 1) % TRACK_ID_COLORS.length];
+  }
+
+  let hash = 0;
+  for(const char of String(id)){
+    hash = ((hash << 5) - hash) + char.charCodeAt(0);
+    hash |= 0;
+  }
+  return TRACK_ID_COLORS[Math.abs(hash) % TRACK_ID_COLORS.length];
+}
+
 // Draw all tracks on overlay canvas
 function drawOverlay(){
   const ctx = overlay.getContext('2d');
   // Clear
   ctx.clearRect(0,0,overlay.width, overlay.height);
 
-  ctx.strokeStyle = '#00FF7F';
   ctx.lineWidth = Math.max(2, Math.round(overlay.width/400));
   ctx.font = `${14 + Math.round(overlay.width/200)}px sans-serif`;
   ctx.textBaseline = 'top';
 
   const active = tracker.getActiveTracks();
   for(const t of active){
+    const trackColor = colorForTrackId(t.id);
     const [x,y,w,h] = t.lastBBox;
     // Expand box slightly for better visibility (pad by 8% of max(dim) or at least 8px)
     const pad = Math.max(8, Math.round(0.08 * Math.max(w,h)));
@@ -27,6 +55,8 @@ function drawOverlay(){
     if(px + pw > overlay.width) pw = overlay.width - px;
     if(py + ph > overlay.height) ph = overlay.height - py;
     // Draw padded box
+    ctx.strokeStyle = trackColor;
+    ctx.lineWidth = Math.max(2, Math.round(overlay.width/400));
     ctx.beginPath();
     ctx.rect(px,py,pw,ph);
     ctx.stroke();
@@ -40,9 +70,9 @@ function drawOverlay(){
     // Place label above padded bounding box if possible
     let lx = px;
     let ly = Math.max(0, py - boxH - 4);
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillStyle = trackColor;
     ctx.fillRect(lx, ly, boxW, boxH);
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = '#050505';
     ctx.fillText(label, lx + padding, ly + 1);
     // Plain-language group/alone badge (bilingual)
     try{

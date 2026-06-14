@@ -17,6 +17,7 @@ let selectedCameraId = ''; // exact camera deviceId when a physical camera is se
 let frameSkip = 2; // process detection every N frames (reduce CPU)
 let frameCounter = 0;
 let touchDesignerSendIntervalMs = 100; // throttle tracking WebSocket messages
+const MAX_TRACKED_PEOPLE = 10; // keeps the installation readable and lighter on the laptop
 
 // Proximity / Grouping state
 const proximity = {

@@ -97,6 +97,7 @@ class Tracker{
     this.match_weight_motion = 0.3;
     this.match_weight_app = 0.2;
     this.motion_gate = 0.6; // normalized distance gate (relative to frame diag)
+    this.max_tracks = typeof MAX_TRACKED_PEOPLE !== 'undefined' ? MAX_TRACKED_PEOPLE : 10;
   }
 
   predict(){
@@ -219,8 +220,15 @@ class Tracker{
     // keep a snapshot of detections for visualization/debugging
     this.lastDetections = detections.map(d => ({ bbox: d.bbox.slice(), score: d.score, appearance: d.appearance }));
 
-    // 5) Create new tracks for unmatched detections
-    for(const dj of unmatchedDetections){
+    // 5) Create new tracks for unmatched detections, capped for performance/readability
+    this.tracks = this.tracks.filter(t => t.time_since_update <= this.max_age);
+    const openSlots = Math.max(0, this.max_tracks - this.tracks.length);
+    const strongestUnmatched = unmatchedDetections
+      .map(dj => ({ dj, score: detections[dj] ? detections[dj].score || 0 : 0 }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, openSlots);
+    for(const item of strongestUnmatched){
+      const dj = item.dj;
       const det = detections[dj];
       const trk = new Track(det.bbox, `ID${this.nextId++}`);
       trk.appearance = cloneAppearance(det.appearance);
