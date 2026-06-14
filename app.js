@@ -289,6 +289,41 @@ window.addEventListener('pagehide', () => { if(running) stop(); });
 // Helpful: try to resume camera if autoplay blocked
 document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && running && video.paused){ video.play().catch(()=>{}); } });
 
+// Fullscreen installation view: large live tracking image with Monitoring Log overlay.
+const fullscreenButton = document.getElementById('fullscreenButton');
+async function enterInstallationFullscreen(){
+  document.body.classList.add('installation-fullscreen');
+  try{
+    if(document.documentElement.requestFullscreen && !document.fullscreenElement){
+      await document.documentElement.requestFullscreen();
+    }
+  }catch(err){
+    console.warn('Fullscreen request was blocked or unavailable', err);
+  }
+  setTimeout(resizeOverlay, 120);
+}
+
+function exitInstallationFullscreen(){
+  document.body.classList.remove('installation-fullscreen');
+  setTimeout(resizeOverlay, 120);
+}
+
+if(fullscreenButton){
+  fullscreenButton.addEventListener('click', () => {
+    if(document.fullscreenElement || document.body.classList.contains('installation-fullscreen')){
+      if(document.exitFullscreen) document.exitFullscreen().catch(()=>{});
+      exitInstallationFullscreen();
+    }else{
+      enterInstallationFullscreen();
+    }
+  });
+}
+
+document.addEventListener('fullscreenchange', () => {
+  if(!document.fullscreenElement) exitInstallationFullscreen();
+  else setTimeout(resizeOverlay, 120);
+});
+
 // -------------------------
 // Internationalization & Tooltip support (desktop hover + mobile tap)
 // -------------------------

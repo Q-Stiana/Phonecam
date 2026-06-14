@@ -88,3 +88,18 @@ body.lang-de .lang-en { display: none; }
 .debug-highlight-unmatched-detect{stroke:rgba(255,200,60,0.95);}
 .debug-highlight-unmatched-track{stroke:rgba(255,120,40,0.95);}
 .debug-score{font-size:10px;font-weight:700;fill:#fff;stroke:rgba(0,0,0,0.6);stroke-width:2px}
+
+/* Installation fullscreen view: live tracking fills the screen, log stays visible. */
+body.installation-fullscreen{display:block;overflow:hidden;background:#000}
+body.installation-fullscreen #app{width:100vw;height:100vh;max-width:none;padding:0}
+body.installation-fullscreen h1,
+body.installation-fullscreen .controls,
+body.installation-fullscreen .settings,
+body.installation-fullscreen .hint,
+body.installation-fullscreen .explanations{display:none}
+body.installation-fullscreen .video-container{width:100vw;height:100vh;border-radius:0}
+body.installation-fullscreen #video{width:100%;height:100%;max-height:none;object-fit:fill}
+body.installation-fullscreen #overlay{left:50%;top:50%;transform:translate(-50%,-50%)}
+body.installation-fullscreen .event-log{right:18px;bottom:18px;width:min(420px,34vw);max-height:38vh;background:rgba(0,0,0,0.68);backdrop-filter:blur(4px)}
+body.installation-fullscreen .event-log li{font-size:13px;line-height:1.25}
+body.installation-fullscreen .event-log li .time{min-width:132px}

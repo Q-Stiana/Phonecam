@@ -566,7 +566,7 @@ function drawOverlay(){
       }else{
         gid = `G${gidCounter++}`;
         proximity.groups[gid] = { id: gid, members: comp.slice(), created: Date.now() };
-        pushEvent(`Gruppe ${gid} gebildet (${comp.length} IDs)`);
+        pushEvent(`Group ${gid} formed (${comp.length} IDs)`);
       }
       // draw bounding box for this group
       const points = comp.map(id=> idToNode[id].c);
@@ -608,12 +608,12 @@ function drawOverlay(){
         proximity.stableMembership[id] = newVal;
         proximity.counters[id] = 0;
         if(!stableVal && newVal){
-          pushEvent(`${id} trifft ${newVal} (close proximity)`);
-          pushEvent(`${id} scheint mit einer Person zu sprechen`);
+          pushEvent(`${id} meets ${newVal} (close proximity)`);
+          pushEvent(`${id} appears to speak with another person`);
         }else if(stableVal && newVal && stableVal !== newVal){
-          pushEvent(`${id} wechselt von ${stableVal} zu ${newVal}`);
+          pushEvent(`${id} switches from ${stableVal} to ${newVal}`);
         }else if(stableVal && !newVal){
-          pushEvent(`${id} entfernt sich von ${stableVal}`);
+          pushEvent(`${id} moves away from ${stableVal}`);
         }
       }
     }

@@ -1,7 +1,7 @@
 ﻿/* Event log and movement-state events. */
 
 // Event log
-const eventLog = { entries: [], max: 80 };
+const eventLog = { entries: [], max: 80, perIdIntervalMs: 3000, lastById: {} };
 const eventListEl = document.getElementById('eventList');
 const eventLogEl = document.getElementById('eventLog');
 const clearLogBtn = document.getElementById('clearLog');
@@ -33,8 +33,19 @@ document.addEventListener('keydown', (ev)=>{
   }
 });
 
+function eventTrackId(text){
+  const match = String(text).match(/\bID\d+\b/);
+  return match ? match[0] : null;
+}
+
 function pushEvent(text){
   const ts = new Date();
+  const id = eventTrackId(text);
+  if(id){
+    const last = eventLog.lastById[id] || 0;
+    if(ts.getTime() - last < eventLog.perIdIntervalMs) return;
+    eventLog.lastById[id] = ts.getTime();
+  }
   const entry = { t: ts, text };
   eventLog.entries.unshift(entry);
   if(eventLog.entries.length > eventLog.max) eventLog.entries.length = eventLog.max;
@@ -118,7 +129,7 @@ function trackMotionIntent(track){
       dx: 0,
       dy: 0,
       direction: 'unknown',
-      directionText: 'unklar',
+      directionText: 'unclear',
       approachingCenter: false,
       leavingCenter: false,
       instability: 0,
@@ -134,18 +145,18 @@ function trackMotionIntent(track){
   const absY = Math.abs(dy);
   const minDirection = 0.012;
   let direction = 'unclear';
-  let directionText = 'unklar';
+  let directionText = 'unclear';
 
   if(Math.max(absX, absY) >= minDirection){
     if(absX > absY * 1.35){
       direction = dx < 0 ? 'left' : 'right';
-      directionText = dx < 0 ? 'nach LINKS' : 'nach RECHTS';
+      directionText = dx < 0 ? 'LEFT' : 'RIGHT';
     }else if(absY > absX * 1.35){
       direction = dy < 0 ? 'up' : 'down';
-      directionText = dy < 0 ? 'nach OBEN' : 'nach UNTEN';
+      directionText = dy < 0 ? 'UP' : 'DOWN';
     }else{
-      const vertical = dy < 0 ? 'OBEN' : 'UNTEN';
-      const horizontal = dx < 0 ? 'LINKS' : 'RECHTS';
+      const vertical = dy < 0 ? 'UP' : 'DOWN';
+      const horizontal = dx < 0 ? 'LEFT' : 'RIGHT';
       direction = `${dy < 0 ? 'up' : 'down'}_${dx < 0 ? 'left' : 'right'}`;
       directionText = `diagonal ${vertical}-${horizontal}`;
     }
@@ -188,18 +199,25 @@ function trackMotionIntent(track){
 
 function trackMotionState(speed, motionIntent){
   if(motionIntent && motionIntent.nervous){
-    return { name: 'nervous', label: 'nervös', color: '#F15BB5' };
+    return { name: 'nervous', label: 'nervous', color: '#F15BB5' };
   }
   if(speed <= trackEvents.stopThreshold){
-    return { name: 'still', label: 'Stillstand', color: '#B8C0CC' };
+    return { name: 'still', label: 'still', color: '#B8C0CC' };
   }
   if(speed < trackEvents.moveThreshold){
-    return { name: 'slow', label: 'langsam', color: '#00E5FF' };
+    return { name: 'slow', label: 'slow', color: '#00E5FF' };
   }
   if(speed < trackEvents.moveThreshold * 2.8){
     return { name: 'normal', label: 'normal', color: '#7CFF6B' };
   }
-  return { name: 'fast', label: 'auffällig schnell', color: '#FF4D4D' };
+  return { name: 'fast', label: 'fast / alert', color: '#FF4D4D' };
+}
+
+function zoneLabel(zone){
+  if(zone === 'LINKS') return 'LEFT';
+  if(zone === 'MITTE') return 'CENTER';
+  if(zone === 'RECHTS') return 'RIGHT';
+  return zone || 'UNKNOWN';
 }
 
 function trackBoxArea(track){
@@ -274,12 +292,12 @@ function updateTrackEventLog(activeTracks){
         lastColor: null
       };
       trackEvents.states[t.id] = state;
-      pushEvent(`${t.id} erfasst`);
+      pushEvent(`${t.id} detected`);
     }
 
     if(trackEvents.missingFrames[t.id] > 0){
-      pushEvent(`${t.id} kehrt zurück nach ${formatDuration(trackEvents.missingFrames[t.id] * 1000 / 30)} Abwesenheit`);
-      pushEvent(`${t.id} Zuordnung nach Abwesenheit geschätzt`);
+      pushEvent(`${t.id} returns after ${formatDuration(trackEvents.missingFrames[t.id] * 1000 / 30)} absence`);
+      pushEvent(`${t.id} assignment after absence estimated`);
     }
     trackEvents.missingFrames[t.id] = 0;
     const speed = trackSpeedNorm(t);
@@ -296,33 +314,33 @@ function updateTrackEventLog(activeTracks){
     const nowForVisibility = Date.now();
     if(predicted && !state.predictedLogged){
       state.predictedLogged = true;
-      pushEvent(`${t.id} nicht direkt sichtbar, Spur wird fortgeführt`);
+      pushEvent(`${t.id} not directly visible, track is being continued`);
     }
     if(!predicted && state.predictedLogged){
       state.predictedLogged = false;
-      pushEvent(`${t.id} wieder klar erfasst`);
+      pushEvent(`${t.id} clearly detected again`);
     }
     if(!predicted && visibilityRatio < 0.55 && state.visibilityState !== 'reduced' && nowForVisibility - state.visibilityLoggedAt >= trackEvents.visibilityLogMs){
       state.visibilityState = 'reduced';
       state.visibilityLoggedAt = nowForVisibility;
-      pushEvent(`${t.id} Sichtbarkeit sinkt`);
-      pushEvent(`${t.id} teilweise verdeckt`);
+      pushEvent(`${t.id} visibility decreasing`);
+      pushEvent(`${t.id} partially occluded`);
     }else if(!predicted && visibilityRatio > 0.75 && state.visibilityState === 'reduced' && nowForVisibility - state.visibilityLoggedAt >= trackEvents.visibilityLogMs){
       state.visibilityState = 'clear';
       state.visibilityLoggedAt = nowForVisibility;
-      pushEvent(`${t.id} wieder klar erfasst`);
+      pushEvent(`${t.id} clearly detected again`);
     }
     const zone = trackZone(t);
     if(zone !== state.zone){
       state.zone = zone;
       state.zoneSince = Date.now();
       state.zoneDwellLogged = false;
-      pushEvent(`${t.id} betritt Zone ${zone}`);
+      pushEvent(`${t.id} enters zone ${zoneLabel(zone)}`);
     }else if(state.zoneSince && !state.zoneDwellLogged && Date.now() - state.zoneSince >= trackEvents.zoneDwellMs){
       state.zoneDwellLogged = true;
-      pushEvent(`${t.id} verweilt in Zone ${zone} seit ${formatDuration(Date.now() - state.zoneSince)}`);
+      pushEvent(`${t.id} remains in zone ${zoneLabel(zone)} for ${formatDuration(Date.now() - state.zoneSince)}`);
       if(zone === 'MITTE'){
-        pushEvent(`${t.id} überschreitet Beobachtungsdauer in Zone MITTE`);
+        pushEvent(`${t.id} exceeds observation time in zone CENTER`);
       }
     }
 
@@ -331,7 +349,7 @@ function updateTrackEventLog(activeTracks){
     for(const milestone of observedMilestones){
       if(observedMs >= milestone * 1000 && state.lastDwellMilestone < milestone){
         state.lastDwellMilestone = milestone;
-        pushEvent(`${t.id} ist sichtbar seit ${formatDuration(observedMs)}`);
+        pushEvent(`${t.id} visible for ${formatDuration(observedMs)}`);
         break;
       }
     }
@@ -340,19 +358,19 @@ function updateTrackEventLog(activeTracks){
     const escalation = escalationForScore(dwellScore);
     if(escalation > state.escalation){
       state.escalation = escalation;
-      const labels = ['registriert', 'beobachtet', 'auffällig', 'kritisch'];
-      pushEvent(`${t.id} Dwell Score Stufe ${escalation}: ${labels[escalation - 1]}`);
+      const labels = ['registered', 'observed', 'flagged', 'critical'];
+      pushEvent(`${t.id} Dwell Score level ${escalation}: ${labels[escalation - 1]}`);
     }
 
     if(motionState.name !== state.lastMotionState && Date.now() - state.lastMotionStateLoggedAt >= trackEvents.speedLogMs){
       state.lastMotionState = motionState.name;
       state.lastMotionStateLoggedAt = Date.now();
       if(motionState.name === 'fast'){
-        pushEvent(`${t.id} Geschwindigkeit auffällig`);
+        pushEvent(`${t.id} speed flagged`);
       }else if(motionState.name === 'nervous'){
-        pushEvent(`${t.id} Bewegungsprofil nervös markiert`);
+        pushEvent(`${t.id} motion profile marked nervous`);
       }else if(motionState.name === 'slow'){
-        pushEvent(`${t.id} Bewegung verlangsamt`);
+        pushEvent(`${t.id} movement slowing down`);
       }
     }
 
@@ -364,8 +382,8 @@ function updateTrackEventLog(activeTracks){
         if(!state.slowSince) state.slowSince = Date.now();
         if(!state.slowLogged && Date.now() - state.slowSince >= trackEvents.slowMoveMs){
           state.slowLogged = true;
-          pushEvent(`${t.id} bewegt sich langsam seit ${formatDuration(Date.now() - state.slowSince)}`);
-          pushEvent(`${t.id} Bewegungsabsicht unklar`);
+          pushEvent(`${t.id} moving slowly for ${formatDuration(Date.now() - state.slowSince)}`);
+          pushEvent(`${t.id} movement intention unclear`);
         }
       }else{
         state.slowSince = null;
@@ -379,33 +397,33 @@ function updateTrackEventLog(activeTracks){
         if(directionChanged || canLogDirection){
           state.lastDirection = motionIntent.direction;
           state.lastDirectionLoggedAt = now;
-          pushEvent(`${t.id} bewegt sich ${motionIntent.directionText}`);
+          pushEvent(`${t.id} moving ${motionIntent.directionText}`);
         }
       }
 
       if(motionIntent.approachingCenter && now - state.lastIntentLoggedAt >= trackEvents.directionLogMs){
         state.lastIntentLoggedAt = now;
-        pushEvent(`${t.id} nähert sich Zone MITTE`);
+        pushEvent(`${t.id} approaching zone CENTER`);
       }else if(motionIntent.leavingCenter && zone !== 'MITTE' && now - state.lastIntentLoggedAt >= trackEvents.directionLogMs){
         state.lastIntentLoggedAt = now;
-        pushEvent(`${t.id} entfernt sich von Zone MITTE`);
+        pushEvent(`${t.id} leaving zone CENTER`);
       }
 
       if(motionIntent.nervous && now - state.nervousLoggedAt >= trackEvents.nervousLogMs){
         state.nervousLoggedAt = now;
-        pushEvent(`${t.id} Bewegungsmuster nervös / instabil`);
-        pushEvent(`${t.id} scheint Raum zu scannen`);
+        pushEvent(`${t.id} movement pattern nervous / unstable`);
+        pushEvent(`${t.id} appears to scan the room`);
       }
 
       if(!state.moving && state.moveFrames >= trackEvents.movementFrames){
         if(state.stillSince){
-          pushEvent(`${t.id} bewegt sich weiter nach ${formatDuration(Date.now() - state.stillSince)} Stillstand`);
+          pushEvent(`${t.id} moves again after ${formatDuration(Date.now() - state.stillSince)} stillness`);
           state.stillSince = null;
           state.lastStillMilestone = 0;
         }
         state.moving = true;
         state.loiterLogged = false;
-        pushEvent(`${t.id} startet Bewegung`);
+        pushEvent(`${t.id} starts moving`);
       }
     }else if(speed <= trackEvents.stopThreshold){
       state.stopFrames++;
@@ -417,7 +435,7 @@ function updateTrackEventLog(activeTracks){
         state.moving = false;
         state.stillSince = Date.now();
         state.lastStillMilestone = 0;
-        pushEvent(`${t.id} bleibt stehen`);
+        pushEvent(`${t.id} stops moving`);
       }else if(!state.moving && !state.stillSince && state.stopFrames >= trackEvents.stopFrames){
         state.stillSince = Date.now();
         state.lastStillMilestone = 0;
@@ -428,18 +446,18 @@ function updateTrackEventLog(activeTracks){
         for(const milestone of milestones){
           if(stillSeconds >= milestone && state.lastStillMilestone < milestone){
             state.lastStillMilestone = milestone;
-            pushEvent(`${t.id} steht still seit ${formatDuration(stillSeconds * 1000)}`);
+            pushEvent(`${t.id} standing still for ${formatDuration(stillSeconds * 1000)}`);
             break;
           }
         }
       }
       if(!state.loiterLogged && state.stillFrames >= trackEvents.loiterFrames){
         state.loiterLogged = true;
-        const dwell = state.stillSince ? ` (${formatDuration(Date.now() - state.stillSince)} Stillstand)` : '';
-        pushEvent(`${t.id} verweilt / loitering${dwell}`);
-        pushEvent(`${t.id} Spur brennt sich ein`);
+        const dwell = state.stillSince ? ` (${formatDuration(Date.now() - state.stillSince)} stillness)` : '';
+        pushEvent(`${t.id} loitering${dwell}`);
+        pushEvent(`${t.id} trace is burning in`);
         if(zone === 'MITTE'){
-          pushEvent(`${t.id} scheint Objekt zu beobachten`);
+          pushEvent(`${t.id} appears to observe the object`);
         }
       }
     }else{
@@ -447,15 +465,15 @@ function updateTrackEventLog(activeTracks){
       state.stopFrames = 0;
       if(state.zone === 'MITTE' && state.stillSince && Date.now() - state.stillSince > 6000 && !state.intentLogged){
         state.intentLogged = true;
-        pushEvent(`${t.id} Bewegungsabsicht unklar`);
-        pushEvent(`${t.id} scheint Objekt zu beobachten`);
+        pushEvent(`${t.id} movement intention unclear`);
+        pushEvent(`${t.id} appears to observe the object`);
       }
     }
 
     const color = t.appearanceSummary && t.appearanceSummary.name;
     if(color && color !== 'Unknown' && color !== state.lastColor){
       state.lastColor = color;
-      pushEvent(`${t.id} Merkmal Farbe: ${color}`);
+      pushEvent(`${t.id} color feature: ${color}`);
     }
   }
 
@@ -464,9 +482,9 @@ function updateTrackEventLog(activeTracks){
     trackEvents.missingFrames[id] = (trackEvents.missingFrames[id] || 0) + 1;
     if(trackEvents.missingFrames[id] === trackEvents.missingFramesLimit){
       const observed = trackEvents.states[id] && trackEvents.states[id].seenAt
-        ? ` nach ${formatDuration(Date.now() - trackEvents.states[id].seenAt)} Beobachtung`
+        ? ` after ${formatDuration(Date.now() - trackEvents.states[id].seenAt)} observation`
         : '';
-      pushEvent(`${id} verschwindet aus dem Sichtfeld${observed}`);
+      pushEvent(`${id} leaves the field of view${observed}`);
       delete trackEvents.states[id];
       delete trackEvents.missingFrames[id];
     }
