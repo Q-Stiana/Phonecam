@@ -62,10 +62,10 @@ body.lang-de .lang-en { display: none; }
 .legend-btn:focus{outline:2px solid rgba(102,204,255,0.6)}
 
 /* Event log styling */
-.event-log{position:fixed;right:12px;bottom:12px;width:260px;max-height:40vh;background:rgba(0,0,0,0.6);color:#fff;border-radius:8px;overflow:hidden;z-index:2000;font-size:13px}
+.event-log{position:fixed;right:12px;bottom:12px;width:340px;max-height:56vh;background:rgba(0,0,0,0.6);color:#fff;border-radius:8px;overflow:hidden;z-index:2000;font-size:13px}
 .event-log-header{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.06)}
 .event-log-header button{background:rgba(255,255,255,0.06);border:0;color:#fff;padding:4px 6px;border-radius:6px;cursor:pointer}
-.event-log ul{list-style:none;margin:0;padding:8px;max-height:34vh;overflow:auto}
+.event-log ul{list-style:none;margin:0;padding:8px;max-height:50vh;overflow:auto}
 .event-log li{padding:6px 4px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:12px}
 .event-log li .time{color:#bbb;margin-right:8px;font-size:11px;display:inline-block;min-width:132px}
 .event-log .badge{background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:6px;margin-left:6px;font-size:11px}
@@ -100,6 +100,7 @@ body.installation-fullscreen .explanations{display:none}
 body.installation-fullscreen .video-container{width:100vw;height:100vh;border-radius:0}
 body.installation-fullscreen #video{width:100%;height:100%;max-height:none;object-fit:fill}
 body.installation-fullscreen #overlay{left:50%;top:50%;transform:translate(-50%,-50%)}
-body.installation-fullscreen .event-log{right:18px;bottom:18px;width:min(420px,34vw);max-height:38vh;background:rgba(0,0,0,0.68);backdrop-filter:blur(4px)}
+body.installation-fullscreen .event-log{right:18px;bottom:18px;width:min(520px,40vw);max-height:58vh;background:rgba(0,0,0,0.68);backdrop-filter:blur(4px)}
+body.installation-fullscreen .event-log ul{max-height:52vh}
 body.installation-fullscreen .event-log li{font-size:13px;line-height:1.25}
 body.installation-fullscreen .event-log li .time{min-width:132px}
