@@ -22,6 +22,26 @@ http://localhost:8000/
 Do not open `index.html` directly by double-clicking it. The camera and model
 loading are more reliable through `localhost`.
 
+## TouchDesigner local WebSocket
+
+The browser sends tracking and event data to TouchDesigner locally:
+
+```text
+ws://127.0.0.1:9980
+```
+
+In TouchDesigner, create a WebSocket DAT that listens on port `9980`.
+The browser keeps running even if TouchDesigner is not open yet, and reconnects
+automatically.
+
+Message types:
+
+```text
+hello     connection test
+tracking  active IDs, normalized position, color, speed, still/observed time
+event     Monitoring Log entries with Zurich timestamp
+```
+
 ## TouchDesigner WebSocket bridge
 
 TouchDesigner does not need to host the WebSocket server. Run the local relay:

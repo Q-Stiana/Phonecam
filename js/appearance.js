@@ -200,6 +200,16 @@ function getAppearanceSummary(hist){
   return { name: best.name, hue: best.hue, rgb: best.rgb, confidence };
 }
 
+function getAppearanceBucketScore(hist, bucketName){
+  if(!hist || !hist.length) return 0;
+  const bucket = COLOR_BUCKETS.find(item => item.name === bucketName);
+  if(!bucket) return 0;
+  if(bucket.neutral){
+    return (hist.neutral && hist.neutral[bucket.neutral]) || 0;
+  }
+  return bucket.bins.reduce((sum, bin) => sum + (hist[bin] || 0), 0);
+}
+
 function cloneAppearance(hist){
   if(!hist) return null;
   const clone = hist.slice();

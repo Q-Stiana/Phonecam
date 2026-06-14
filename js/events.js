@@ -39,6 +39,7 @@ function pushEvent(text){
   eventLog.entries.unshift(entry);
   if(eventLog.entries.length > eventLog.max) eventLog.entries.length = eventLog.max;
   renderEventLog();
+  if(typeof sendTouchDesignerEvent === 'function') sendTouchDesignerEvent(text, ts);
   // optional narration for lay users
   if(narrationEnabled){ speakEvent(text); }
 }
@@ -193,4 +194,3 @@ function updateTrackEventLog(activeTracks){
     }
   }
 }
-
