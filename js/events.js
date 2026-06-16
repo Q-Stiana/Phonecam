@@ -93,7 +93,7 @@ const trackEvents = {
   zoneDwellMs: 18000,
   slowMoveMs: 8000,
   directionLogMs: 5000,
-  nervousLogMs: 7000,
+  nervousLogMs: 18000,
   speedLogMs: 4000,
   predictedFrames: 6,
   visibilityLogMs: 5000
@@ -193,7 +193,7 @@ function trackMotionIntent(track){
     approachingCenter: startDist - endDist > (overlay.width || 640) * 0.05,
     leavingCenter: endDist - startDist > (overlay.width || 640) * 0.05,
     instability,
-    nervous: instability >= 0.42
+    nervous: instability >= 0.62
   };
 }
 
@@ -277,6 +277,7 @@ function updateTrackEventLog(activeTracks){
         lastDirection: null,
         lastDirectionLoggedAt: 0,
         lastIntentLoggedAt: 0,
+        observedObjectLogged: false,
         nervousLoggedAt: 0,
         lastMotionState: null,
         lastMotionStateLoggedAt: 0,
@@ -341,6 +342,10 @@ function updateTrackEventLog(activeTracks){
       pushEvent(`${t.id} remains in zone ${zoneLabel(zone)} for ${formatDuration(Date.now() - state.zoneSince)}`);
       if(zone === 'MITTE'){
         pushEvent(`${t.id} exceeds observation time in zone CENTER`);
+        if(!state.observedObjectLogged){
+          state.observedObjectLogged = true;
+          pushEvent(`${t.id} appears to observe the object`);
+        }
       }
     }
 
@@ -367,8 +372,8 @@ function updateTrackEventLog(activeTracks){
       state.lastMotionStateLoggedAt = Date.now();
       if(motionState.name === 'fast'){
         pushEvent(`${t.id} speed flagged`);
-      }else if(motionState.name === 'nervous'){
-        pushEvent(`${t.id} motion profile marked nervous`);
+      }else if(motionState.name === 'nervous' && zone !== 'MITTE'){
+        pushEvent(`${t.id} movement pattern unstable`);
       }else if(motionState.name === 'slow'){
         pushEvent(`${t.id} movement slowing down`);
       }
@@ -411,8 +416,12 @@ function updateTrackEventLog(activeTracks){
 
       if(motionIntent.nervous && now - state.nervousLoggedAt >= trackEvents.nervousLogMs){
         state.nervousLoggedAt = now;
-        pushEvent(`${t.id} movement pattern nervous / unstable`);
-        pushEvent(`${t.id} appears to scan the room`);
+        pushEvent(`${t.id} movement pattern unstable`);
+        if(zone === 'MITTE'){
+          pushEvent(`${t.id} appears to observe the object`);
+        }else{
+          pushEvent(`${t.id} appears to scan the room`);
+        }
       }
 
       if(!state.moving && state.moveFrames >= trackEvents.movementFrames){
