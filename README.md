@@ -54,6 +54,37 @@ px, py   position in pixels
 bbox     bounding box: x, y, w, h
 ```
 
+Fixed TouchDesigner function per ID:
+
+Each ID also receives one fixed TouchDesigner function. This makes it easy to
+connect different IDs to different visuals.
+
+```text
+tdFunctionSlot    number from 1 to 10
+tdFunctionName    machine-readable function name
+tdFunctionLabel   readable description
+tdFunctionValue   control value from 0.0 to 1.0
+tdFunctionActive  true/false trigger
+```
+
+ID mapping:
+
+```text
+ID1   red_filter             red filter from clothing color
+ID2   burn_in_trace          loitering burn-in trace
+ID3   dwell_escalation       dwell score / escalation
+ID4   motion_speed           motion speed distortion
+ID5   nervous_glitch         nervous movement glitch
+ID6   direction_flow         directional flow field
+ID7   center_approach        approaching center trigger
+ID8   proximity_lines        group / proximity lines
+ID9   tracking_uncertainty   predicted / occluded ghosting
+ID10  zone_mask              zone-based mask or filter
+```
+
+In TouchDesigner, `tdFunctionValue` can usually drive the effect intensity, and
+`tdFunctionActive` can be used as an on/off trigger.
+
 Color / clothing:
 
 ```text

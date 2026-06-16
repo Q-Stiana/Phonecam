@@ -7,6 +7,71 @@ let touchDesignerSocket = null;
 let touchDesignerReconnectTimer = null;
 let lastTouchDesignerSend = 0;
 
+const TOUCHDESIGNER_ID_FUNCTIONS = [
+  { id: 1, name: 'red_filter', label: 'Red filter from clothing color' },
+  { id: 2, name: 'burn_in_trace', label: 'Loitering burn-in trace' },
+  { id: 3, name: 'dwell_escalation', label: 'Dwell score / escalation' },
+  { id: 4, name: 'motion_speed', label: 'Motion speed distortion' },
+  { id: 5, name: 'nervous_glitch', label: 'Nervous movement glitch' },
+  { id: 6, name: 'direction_flow', label: 'Directional flow field' },
+  { id: 7, name: 'center_approach', label: 'Approaching center trigger' },
+  { id: 8, name: 'proximity_lines', label: 'Group / proximity lines' },
+  { id: 9, name: 'tracking_uncertainty', label: 'Predicted / occluded ghosting' },
+  { id: 10, name: 'zone_mask', label: 'Zone-based mask or filter' }
+];
+
+function numericIdForTrack(trackId){
+  const match = String(trackId).match(/\d+/);
+  return match ? parseInt(match[0], 10) : 0;
+}
+
+function touchDesignerFunctionForTrack(trackId, state){
+  const numericId = numericIdForTrack(trackId);
+  const assignment = TOUCHDESIGNER_ID_FUNCTIONS[(Math.max(1, numericId) - 1) % TOUCHDESIGNER_ID_FUNCTIONS.length];
+  let value = 0;
+  let active = false;
+
+  if(assignment.name === 'red_filter'){
+    value = state.redScore;
+    active = state.redActive;
+  }else if(assignment.name === 'burn_in_trace'){
+    value = state.burnIn;
+    active = state.burnInActive;
+  }else if(assignment.name === 'dwell_escalation'){
+    value = Math.max(state.dwellScore, state.escalation / 4);
+    active = state.escalation >= 1;
+  }else if(assignment.name === 'motion_speed'){
+    value = Math.max(0, Math.min(1, state.speed * 18));
+    active = state.moving;
+  }else if(assignment.name === 'nervous_glitch'){
+    value = state.instability;
+    active = state.nervous;
+  }else if(assignment.name === 'direction_flow'){
+    value = Math.max(0, Math.min(1, Math.hypot(state.directionX, state.directionY) * 18));
+    active = state.direction !== 'unknown' && state.direction !== 'unclear';
+  }else if(assignment.name === 'center_approach'){
+    value = state.approachingCenter ? 1 : 0;
+    active = state.approachingCenter;
+  }else if(assignment.name === 'proximity_lines'){
+    value = state.inGroup ? 1 : 0;
+    active = state.inGroup;
+  }else if(assignment.name === 'tracking_uncertainty'){
+    value = state.predicted ? 1 : 1 - state.visibilityRatio;
+    active = state.predicted || state.visibilityState === 'reduced';
+  }else if(assignment.name === 'zone_mask'){
+    value = state.zone === 'MITTE' ? 1 : (state.zone === 'LINKS' || state.zone === 'RECHTS' ? 0.5 : 0);
+    active = state.zone !== 'UNKNOWN';
+  }
+
+  return {
+    slot: assignment.id,
+    name: assignment.name,
+    label: assignment.label,
+    value: Math.max(0, Math.min(1, value || 0)),
+    active
+  };
+}
+
 function connectTouchDesignerSocket(){
   if(touchDesignerSocket && (
     touchDesignerSocket.readyState === WebSocket.OPEN ||
@@ -112,9 +177,37 @@ function getTrackTransportState(track){
   const interaction = groupId
     ? 'close_proximity'
     : (isLoitering ? 'loitering' : (isSlow ? 'unclear_motion' : 'none'));
+  const tdState = {
+    speed,
+    motionState: motionState.name,
+    predicted,
+    visibilityRatio,
+    visibilityState: eventState && eventState.visibilityState ? eventState.visibilityState : 'clear',
+    direction: motionIntent ? motionIntent.direction : 'unknown',
+    directionX: motionIntent ? motionIntent.dx : 0,
+    directionY: motionIntent ? motionIntent.dy : 0,
+    approachingCenter: !!(motionIntent && motionIntent.approachingCenter),
+    instability: motionIntent ? motionIntent.instability : 0,
+    nervous: !!(motionIntent && motionIntent.nervous),
+    moving: !!(eventState && eventState.moving),
+    zone: eventState && eventState.zone ? eventState.zone : 'UNKNOWN',
+    dwellScore,
+    escalation,
+    burnIn,
+    burnInActive: burnIn >= 0.45,
+    inGroup: !!groupId,
+    redScore,
+    redActive: redScore >= 0.30
+  };
+  const tdFunction = touchDesignerFunctionForTrack(track.id, tdState);
 
   return {
     id: track.id,
+    tdFunctionSlot: tdFunction.slot,
+    tdFunctionName: tdFunction.name,
+    tdFunctionLabel: tdFunction.label,
+    tdFunctionValue: tdFunction.value,
+    tdFunctionActive: tdFunction.active,
     timestamp,
     x: centroid[0] / frameWidth,
     y: centroid[1] / frameHeight,
